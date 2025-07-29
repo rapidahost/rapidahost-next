@@ -20,6 +20,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@types/react": "^19.1.8",
     "eslint": "^9",
     "eslint-config-next": "15.4.4",
     "tailwindcss": "^4"
