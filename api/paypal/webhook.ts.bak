@@ -1,0 +1,102 @@
+// /api/paypal/webhook.ts
+
+import type { NextApiRequest, NextApiResponse } from 'next'
+import { buffer } from 'micro'
+import { verifyPayPalWebhookSignature } from '@/lib/paypal/verifySignature'
+import { createWHMCSClientAndInvoice } from '@/lib/whmcs/createWHMCSClientAndInvoice'
+import { logEvent } from '@/lib/logging/logEvent'
+import { queueRetry } from '@/lib/retry/queueRetry'
+
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+}
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' })
+  }
+
+  const isValid = await verifyPayPalWebhookSignature(req)
+  if (!isValid) {
+    await logEvent({
+      source: 'paypal',
+      type: 'webhook',
+      status: 'failed',
+      message: 'Invalid PayPal signature',
+      traceId: 'paypal_invalid_sig'
+    })
+    return res.status(400).json({ error: 'Invalid signature' })
+  }
+
+  const rawBody = await buffer(req)
+  const event = JSON.parse(rawBody.toString())
+
+  switch (event.event_type) {
+    case 'PAYMENT.CAPTURE.COMPLETED': {
+      try {
+        const metadata = event.resource.custom_id ? JSON.parse(event.resource.custom_id) : {}
+
+        const result = await createWHMCSClientAndInvoice({
+          email: event.resource.payer.email_address,
+          name: `${event.resource.payer.name.given_name} ${event.resource.payer.name.surname}`,
+          plan_id: metadata.plan_id,
+          payment_method: 'paypal',
+          promocode: metadata.promocode,
+          billingcycle: metadata.billingcycle
+        })
+
+        // ส่ง Welcome Email
+        const emailRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/email/welcome`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clientId: result.clientId,
+            password: result.password || ''
+          })
+        })
+
+        await logEvent({
+          source: 'paypal',
+          type: 'checkout',
+          status: 'success',
+          clientId: result.clientId,
+          invoiceId: result.invoiceId,
+          serviceId: result.serviceId,
+          traceId: `paypal_${event.resource.id}`,
+          message: 'PayPal payment processed and client created',
+          links: {
+            client: `/admin/client/${result.clientId}`,
+            invoice: `/admin/invoice/${result.invoiceId}`,
+            email: `/admin/email?clientId=${result.clientId}`
+          }
+        })
+
+      } catch (error) {
+        const errMessage = error instanceof Error ? error.message : 'Unknown error';
+        await queueRetry({
+          source: 'paypal',
+          event: event,
+          reason: errMessage,
+          traceId: `paypal_${event.resource.id}`
+        });
+
+        await logEvent({
+          source: 'paypal',
+          type: 'checkout',
+          status: 'failed',
+          message: errMessage,
+          traceId: `paypal_${event.resource.id}`
+        })
+        return res.status(500).json({ error: 'Internal error' })
+      }
+      break
+    }
+
+    default:
+      console.log('Unhandled PayPal event:', event.event_type)
+  }
+
+  res.status(200).json({ received: true })
+}

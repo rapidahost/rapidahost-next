@@ -24,7 +24,7 @@ export async function POST(req) {
         plan_id,
         description,
       },
-      success_url: 'https://rapidahost.com/thank-you',
+      success_url: 'https://rapidahost.vercel.app/signup/thank-you',
       cancel_url: 'https://rapidahost.com/cancel',
     });
 

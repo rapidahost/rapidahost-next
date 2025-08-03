@@ -1,0 +1,46 @@
+// /api/payment/paypal/execute.ts
+import { NextRequest, NextResponse } from 'next/server';
+import paypal from '@paypal/checkout-server-sdk';
+
+const clientId = process.env.PAYPAL_CLIENT_ID!;
+const clientSecret = process.env.PAYPAL_CLIENT_SECRET!;
+const isSandbox = process.env.PAYPAL_ENV !== 'live';
+
+function environment() {
+  return isSandbox
+    ? new paypal.core.SandboxEnvironment(clientId, clientSecret)
+    : new paypal.core.LiveEnvironment(clientId, clientSecret);
+}
+
+const client = new paypal.core.PayPalHttpClient(environment());
+
+export async function POST(req: NextRequest) {
+  const body = await req.json();
+  const { orderId } = body;
+
+  if (!orderId) {
+    return NextResponse.json({ error: 'Missing orderId' }, { status: 400 });
+  }
+
+  const request = new paypal.orders.OrdersCaptureRequest(orderId);
+  request.requestBody({});
+
+  try {
+    const capture = await client.execute(request);
+    const captureId = capture.result.purchase_units[0]?.payments?.captures[0]?.id;
+
+    return NextResponse.json({
+      success: true,
+      orderId,
+      captureId,
+      metadata: {
+        plan_id: capture.result.purchase_units[0].custom_id,
+        email: capture.result.payer.email_address,
+        payer_name: `${capture.result.payer.name.given_name} ${capture.result.payer.name.surname}`,
+      },
+    });
+  } catch (err: any) {
+    console.error('PayPal Capture Error:', err);
+    return NextResponse.json({ error: 'Capture failed' }, { status: 500 });
+  }
+}
