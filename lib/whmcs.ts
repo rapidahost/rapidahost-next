@@ -1,75 +1,56 @@
-import axios from 'axios'
+// lib/whmcs.ts
+import qs from 'qs'
 
-const WHMCS_API_URL = process.env.WHMCS_API_URL!
+const WHMCS_API_URL = process.env.WHMCS_API_URL! // เช่น https://billing.rapidahost.com/api/index.php
 const WHMCS_IDENTIFIER = process.env.WHMCS_API_IDENTIFIER!
 const WHMCS_SECRET = process.env.WHMCS_API_SECRET!
+const WHMCS_ADMIN_USER = process.env.WHMCS_API_ADMIN_USER!
 
-export async function getClientDetails(clientId: number) {
-  try {
-    const payload = {
-      identifier: WHMCS_IDENTIFIER,
-      secret: WHMCS_SECRET,
-      action: 'GetClientsDetails',
-      clientid: clientId,
-      stats: true,
-      responsetype: 'json',
-    }
+async function callWhmcsApi<T>(action: string, extraParams: Record<string, any>): Promise<T> {
+  const postData = qs.stringify({
+    identifier: WHMCS_IDENTIFIER,
+    secret: WHMCS_SECRET,
+    action,
+    adminuser: WHMCS_ADMIN_USER,
+    responsetype: 'json',
+    ...extraParams,
+  })
 
-    const { data } = await axios.post(WHMCS_API_URL, payload)
+  const response = await fetch(WHMCS_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: postData,
+  })
 
-    if (data.result !== 'success') {
-      throw new Error(`WHMCS error: ${data.message || 'Unknown error'}`)
-    }
-
-    return data
-  } catch (error: any) {
-    console.error('Error in getClientDetails:', error.response?.data || error.message)
-    throw error
+  const result = await response.json()
+  if (result.result !== 'success') {
+    console.error(`[WHMCS] ${action} failed`, result)
+    throw new Error(result.message || 'WHMCS API call failed')
   }
+
+  return result
 }
 
-export async function getClientServices(clientId: number) {
-  try {
-    const payload = {
-      identifier: WHMCS_IDENTIFIER,
-      secret: WHMCS_SECRET,
-      action: 'GetClientsProducts',
-      clientid: clientId,
-      responsetype: 'json',
-    }
-
-    const { data } = await axios.post(WHMCS_API_URL, payload)
-
-    if (data.result !== 'success') {
-      throw new Error(`WHMCS error: ${data.message || 'Unknown error'}`)
-    }
-
-    return data
-  } catch (error: any) {
-    console.error('Error in getClientServices:', error.response?.data || error.message)
-    throw error
-  }
+// ✅ ดึงข้อมูล Client
+export async function getClient(clientId: string) {
+  const result = await callWhmcsApi<{ client: any }>('GetClientsDetails', { clientid: clientId })
+  return result.client
 }
 
-export async function getInvoiceDetails(invoiceId: number) {
-  try {
-    const payload = {
-      identifier: WHMCS_IDENTIFIER,
-      secret: WHMCS_SECRET,
-      action: 'GetInvoice',
-      invoiceid: invoiceId,
-      responsetype: 'json',
-    }
+// ✅ ดึงข้อมูล Invoice
+export async function getInvoice(invoiceId: string) {
+  const result = await callWhmcsApi<{ invoice: any }>('GetInvoice', { invoiceid: invoiceId })
+  return result.invoice
+}
 
-    const { data } = await axios.post(WHMCS_API_URL, payload)
+// ✅ ดึงข้อมูล Service
+export async function getService(serviceId: string) {
+  const result = await callWhmcsApi<{ product: any }>('GetClientsProducts', {
+    serviceid: serviceId,
+  })
 
-    if (data.result !== 'success') {
-      throw new Error(`WHMCS error: ${data.message || 'Unknown error'}`)
-    }
-
-    return data
-  } catch (error: any) {
-    console.error('Error in getInvoiceDetails:', error.response?.data || error.message)
-    throw error
-  }
+  // WHMCS คืนเป็น array ถึงแม้มีแค่รายการเดียว
+  return result.product
 }
