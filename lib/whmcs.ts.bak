@@ -1,0 +1,29 @@
+import axios from 'axios'
+
+const WHMCS_API_URL = process.env.WHMCS_API_URL! // เช่น https://billing.rapidahost.com/api/index.php
+const WHMCS_IDENTIFIER = process.env.WHMCS_IDENTIFIER!
+const WHMCS_SECRET = process.env.WHMCS_SECRET!
+
+export async function getClientDetails(clientId: number) {
+  try {
+    const payload = {
+      identifier: WHMCS_IDENTIFIER,
+      secret: WHMCS_SECRET,
+      action: 'GetClientsDetails',
+      clientid: clientId,
+      stats: true,
+      responsetype: 'json',
+    }
+
+    const { data } = await axios.post(WHMCS_API_URL, payload)
+
+    if (data.result !== 'success') {
+      throw new Error(`WHMCS error: ${data.message || 'Unknown error'}`)
+    }
+
+    return data
+  } catch (error: any) {
+    console.error('Error in getClientDetails:', error.response?.data || error.message)
+    throw error
+  }
+}

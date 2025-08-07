@@ -1,0 +1,143 @@
+// components/LogTable.tsx
+"use client"
+
+import React, { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+import { format } from "date-fns";
+import { saveAs } from "file-saver";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import Link from "next/link";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+type Log = {
+  id: string;
+  trace_id: string;
+  status: string;
+  message: string;
+  created_at: string;
+};
+
+export default function LogTable() {
+  const [logs, setLogs] = useState<Log[]>([]);
+  const [searchTraceId, setSearchTraceId] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+
+  useEffect(() => {
+    fetchLogs();
+    const channel = supabase
+      .channel("realtime-logs")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "logs",
+        },
+        (payload) => {
+          setLogs((prev) => [payload.new as Log, ...prev]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const fetchLogs = async () => {
+    const res = await fetch("/api/logs");
+    const data = await res.json();
+    setLogs(data);
+  };
+
+  const filteredLogs = logs.filter(
+    (log) =>
+      log.trace_id.toLowerCase().includes(searchTraceId.toLowerCase()) &&
+      log.status.toLowerCase().includes(filterStatus.toLowerCase())
+  );
+
+  const exportCSV = () => {
+    const csvContent = [
+      ["Trace ID", "Status", "Message", "Time"],
+      ...filteredLogs.map((log) => [
+        log.trace_id,
+        log.status,
+        log.message,
+        format(new Date(log.created_at), "yyyy-MM-dd HH:mm:ss"),
+      ]),
+    ]
+      .map((row) => row.join(","))
+      .join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    saveAs(blob, "logs.csv");
+  };
+
+  const retryLatest = async () => {
+    const latest = logs[0];
+    if (!latest) return alert("No logs to retry");
+    const res = await fetch("/api/retry/process", {
+      method: "POST",
+      body: JSON.stringify({ traceId: latest.trace_id }),
+    });
+    const result = await res.json();
+    alert(result.message || "Retry complete");
+  };
+
+  return (
+    <div className="p-4">
+      <h1 className="text-2xl font-bold mb-4">Logs Dashboard</h1>
+      <div className="flex gap-2 mb-4">
+        <Input
+          placeholder="Search traceId..."
+          value={searchTraceId}
+          onChange={(e) => setSearchTraceId(e.target.value)}
+        />
+        <Input
+          placeholder="Filter status (e.g. failed/success)"
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+        />
+        <Button onClick={exportCSV}>Export CSV</Button>
+        <Button onClick={fetchLogs}>Refresh</Button>
+        <Button onClick={retryLatest}>Retry Latest</Button>
+      </div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="font-bold border-b">
+            <th className="text-left">Trace ID</th>
+            <th className="text-left">Status</th>
+            <th className="text-left">Message</th>
+            <th className="text-left">Time</th>
+            <th className="text-left">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredLogs.map((log) => (
+            <tr key={log.id} className="border-b">
+              <td className="text-blue-600 underline">
+                <Link href={`?trace_id=${log.trace_id}`}>{log.trace_id}</Link>
+              </td>
+              <td>{log.status}</td>
+              <td>{log.message}</td>
+              <td>{format(new Date(log.created_at), "yyyy-MM-dd HH:mm:ss")}</td>
+              <td>
+                <Button
+                  variant="outline"
+                  onClick={() => navigator.clipboard.writeText(log.trace_id)}
+                >
+                  Copy
+                </Button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

@@ -1,0 +1,39 @@
+// src/lib/supabase/insertFailedLog.ts
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
+export async function insertFailedLog({
+  trace_id,
+  event = 'test.log.failed',
+  message = 'This is a failed log for retry test',
+  source = 'system',
+  payload = { error: 'Simulated failure for retry testing' }
+}: {
+  trace_id: string
+  event?: string
+  message?: string
+  source?: string
+  payload?: any
+}) {
+  const { data, error } = await supabase.from('logs').insert([
+    {
+      trace_id,
+      event,
+      status: 'Failed',
+      message,
+      source,
+      payload
+    }
+  ])
+
+  if (error) {
+    console.error('Failed to insert failed log:', error.message)
+    return null
+  }
+
+  return data?.[0]
+}

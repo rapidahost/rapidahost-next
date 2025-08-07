@@ -1,0 +1,88 @@
+import { useRouter } from 'next/router'
+import { useEffect, useState } from 'react'
+
+export default function RetryByTraceIdPage() {
+  const router = useRouter()
+  const { traceId } = router.query
+
+  const [log, setLog] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [retrying, setRetrying] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [reason, setReason] = useState('')
+
+  useEffect(() => {
+    if (!traceId) return
+    const fetchLog = async () => {
+      try {
+        const res = await fetch(`/api/logs/${traceId}`)
+        const data = await res.json()
+        setLog(data)
+      } catch (err) {
+        setError('Failed to load log')
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchLog()
+  }, [traceId])
+
+  const handleRetry = async () => {
+    if (!reason) return alert('Please provide a reason for retry.')
+    setRetrying(true)
+    try {
+      const res = await fetch('/api/retry/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ traceId, reason })
+      })
+      const result = await res.json()
+      if (res.ok) {
+        alert('Retry processed successfully.')
+        router.push('/admin/logs')
+      } else {
+        setError(result.error || 'Retry failed')
+      }
+    } catch (err) {
+      setError('Retry failed')
+    } finally {
+      setRetrying(false)
+    }
+  }
+
+  if (loading) return <div className="p-6">Loading...</div>
+  if (error) return <div className="p-6 text-red-600">Error: {error}</div>
+  if (!log) return <div className="p-6">No log found</div>
+
+  return (
+    <div className="max-w-2xl mx-auto p-6">
+      <h1 className="text-2xl font-bold mb-4">Retry Log</h1>
+      <div className="bg-white shadow p-4 rounded border mb-4">
+        <p><strong>Trace ID:</strong> {log.traceId}</p>
+        <p><strong>Type:</strong> {log.type}</p>
+        <p><strong>Status:</strong> {log.status}</p>
+        <p><strong>Created:</strong> {new Date(log.timestamp).toLocaleString()}</p>
+        <p><strong>Payload:</strong></p>
+        <pre className="text-xs bg-gray-100 p-2 rounded overflow-x-auto">{JSON.stringify(log.payload, null, 2)}</pre>
+      </div>
+
+      <div className="bg-white shadow p-4 rounded border">
+        <label className="block text-sm font-medium mb-1">Reason for Retry</label>
+        <input
+          type="text"
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          className="w-full border px-3 py-2 rounded mb-4"
+          placeholder="e.g. Temporary error during email delivery"
+        />
+        <button
+          onClick={handleRetry}
+          disabled={retrying}
+          className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded"
+        >
+          {retrying ? 'Retrying...' : 'Retry Now'}
+        </button>
+      </div>
+    </div>
+  )
+}
