@@ -1,85 +1,104 @@
-import { NextRequest, NextResponse } from 'next/server';
-import paypal from '@paypal/checkout-server-sdk';
-import { createWHMCSClientAndInvoice } from '@/lib/whmcs/createClientInvoice';
-import { sendEmailWithSendGrid } from '@/lib/email/sendEmailWithSendGrid';
-import { logEvent } from '@/lib/logging/logEvent';
+// pages/api/payment/paypal/execute.ts
+import type { NextApiRequest, NextApiResponse } from 'next'
+import paypal from '@paypal/checkout-server-sdk'
+import { sendEmailWithSendGrid } from '@/lib/email/sendEmailWithSendGrid'
+import { logEvent } from '@/lib/logging/logEvent'
 
-const clientId = process.env.PAYPAL_CLIENT_ID!;
-const clientSecret = process.env.PAYPAL_CLIENT_SECRET!;
-const isSandbox = process.env.PAYPAL_ENV !== 'live';
+// (ถ้ามีใช้) สร้างลูกค้า + invoice ใน WHMCS หลังจ่ายเงิน
+// import { createWHMCSClientAndInvoice } from '@/lib/whmcs/createClientInvoice'
 
-function environment() {
-  return isSandbox
-    ? new paypal.core.SandboxEnvironment(clientId, clientSecret)
-    : new paypal.core.LiveEnvironment(clientId, clientSecret);
+const clientId = process.env.PAYPAL_CLIENT_ID!
+const clientSecret = process.env.PAYPAL_CLIENT_SECRET!
+
+function getPayPalClient() {
+  const env =
+    process.env.PAYPAL_ENV === 'live'
+      ? new paypal.core.LiveEnvironment(clientId, clientSecret)
+      : new paypal.core.SandboxEnvironment(clientId, clientSecret)
+  return new paypal.core.PayPalHttpClient(env)
 }
 
-const client = new paypal.core.PayPalHttpClient(environment());
-
-export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const { orderId } = body;
-
-  if (!orderId) {
-    return NextResponse.json({ error: 'Missing orderId' }, { status: 400 });
-  }
-
-  const request = new paypal.orders.OrdersCaptureRequest(orderId);
-  request.requestBody({});
+/**
+ * รับข้อมูลจากหน้าเช็คเอาท์ (หรือ Webhook) -> capture / verify -> ส่งอีเมล
+ * คุณปรับ body/schema ตามของจริงได้เลย จุดสำคัญคือการส่ง metadata อยู่ใน dynamicTemplateData
+ */
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' })
 
   try {
-    const capture = await client.execute(request);
-    const unit = capture.result.purchase_units[0];
-    const captureId = unit?.payments?.captures[0]?.id;
-    const planId = unit.custom_id;
-    const payerEmail = capture.result.payer.email_address;
-    const payerName = `${capture.result.payer.name.given_name} ${capture.result.payer.name.surname}`;
+    const {
+      orderId,          // PayPal orderId หากคุณ capture ฝั่ง server
+      payerEmail,       // อีเมลผู้จ่าย
+      clientId: cid,    // ไอดีลูกค้าจากระบบคุณ/WHMCS
+      invoiceId,        // ไอดีอินวอยซ์จาก WHMCS (ถ้ามี)
+      serviceId,        // ไอดีบริการ
+      amount,           // จำนวนเงิน
+      currency = 'USD', // สกุลเงิน
+    } = req.body || {}
 
-    // 🔌 เชื่อมต่อ WHMCS API เพื่อสร้าง client + invoice + เปิดบริการ
-    const { clientId, invoiceId, serviceId } = await createWHMCSClientAndInvoice({
-      email: payerEmail,
-      name: payerName,
-      plan_id: planId,
-      payment_method: 'paypal',
-      paypal_capture_id: captureId,
-    });
+    // --- (ตัวอย่าง) ตรวจค่าขั้นต่ำ ---
+    if (!payerEmail) return res.status(400).json({ error: 'Missing payerEmail' })
 
-    // 📤 ส่ง Email ยืนยัน
+    // --- (ตัวอย่าง) capture PayPal order ถ้าคุณต้องการทำที่นี่ ---
+    if (orderId) {
+      const client = getPayPalClient()
+      const request = new paypal.orders.OrdersCaptureRequest(orderId)
+      request.requestBody({})
+      const response = await client.execute(request)
+
+      await logEvent({
+        event: 'paypal.capture.completed',
+        level: 'info',
+        payload: { orderId, status: response?.statusCode, result: response?.result },
+      })
+
+      if (response?.statusCode < 200 || response?.statusCode >= 300) {
+        return res.status(502).json({ error: 'PayPal capture failed', detail: response })
+      }
+    }
+
+    // --- (ถ้ามี flow สร้างลูกค้า/Invoice ใน WHMCS) ---
+    // const whmcs = await createWHMCSClientAndInvoice({ ... })
+    // const createdInvoiceId = whmcs?.invoiceId || invoiceId
+
+    // --- ส่งอีเมลยืนยัน: ใช้ Dynamic Template หรือ subject+html ก็ได้ ---
     await sendEmailWithSendGrid({
-      clientId,
-      invoiceId,
-      serviceId,
       to: payerEmail,
-      type: 'paypal_confirmation',
-    });
+      templateId:
+        process.env.SENDGRID_TEMPLATE_ID_ORDER_CONFIRM ||
+        process.env.SENDGRID_TEMPLATE_ID, // fallback ถ้าใช้ template ตัวเดียว
+      dynamicTemplateData: {
+        clientId: cid,
+        invoiceId,
+        serviceId,
+        amount,
+        currency,
+        // เพิ่ม field อื่น ๆ ที่ template ใช้ได้ตามต้องการ
+      },
+      // ถ้าไม่ใช้ template ให้ใช้แบบ subject/html:
+      // subject: 'Payment received',
+      // html: `<p>Thanks for your order.</p>
+      //        <p>Client: ${cid} | Invoice: ${invoiceId} | Service: ${serviceId}</p>
+      //        <p>Amount: ${amount} ${currency}</p>`,
+    })
 
-    // 📝 เก็บ Log
     await logEvent({
-      traceId: orderId,
-      type: 'paypal_payment',
-      status: 'success',
-      metadata: { clientId, invoiceId, serviceId },
-    });
+      event: 'email.order_confirm.sent',
+      level: 'info',
+      payload: { to: payerEmail, clientId: cid, invoiceId, serviceId, amount, currency },
+    })
 
-    return NextResponse.json({
+    return res.status(200).json({
       success: true,
-      orderId,
-      captureId,
-      clientId,
-      invoiceId,
-      serviceId,
-    });
-
+      message: 'Payment executed and email sent',
+      data: { clientId: cid, invoiceId, serviceId, amount, currency },
+    })
   } catch (err: any) {
-    console.error('PayPal WHMCS Error:', err);
-
     await logEvent({
-      traceId: orderId,
-      type: 'paypal_payment',
-      status: 'failed',
-      error: err.message,
-    });
-
-    return NextResponse.json({ error: 'Processing failed' }, { status: 500 });
+      event: 'paypal.execute.error',
+      level: 'error',
+      payload: { message: err?.message || String(err) },
+    })
+    return res.status(500).json({ error: err?.message || 'Unknown error' })
   }
 }
