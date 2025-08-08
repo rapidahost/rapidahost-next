@@ -1,11 +1,10 @@
-// pages/api/payment/paypal/execute.ts
+// api/payment/paypal/execute.ts
 import type { NextApiRequest, NextApiResponse } from 'next'
 import paypal from '@paypal/checkout-server-sdk'
 import { sendEmailWithSendGrid } from '@/lib/email/sendEmailWithSendGrid'
 import { logEvent } from '@/lib/logging/logEvent'
-
-// (ถ้ามีใช้) สร้างลูกค้า + invoice ใน WHMCS หลังจ่ายเงิน
-// import { createWHMCSClientAndInvoice } from '@/lib/whmcs/createClientInvoice'
+// (ถ้าในฟลโว์คุณต้องสร้าง client/invoice ที่ WHMCS หลังจ่ายเงิน ให้เปิดใช้)
+// import { createWHMCSClientAndInvoice } from '@/lib/whmcs/createWHMCSClientAndInvoice'
 
 const clientId = process.env.PAYPAL_CLIENT_ID!
 const clientSecret = process.env.PAYPAL_CLIENT_SECRET!
@@ -15,67 +14,91 @@ function getPayPalClient() {
     process.env.PAYPAL_ENV === 'live'
       ? new paypal.core.LiveEnvironment(clientId, clientSecret)
       : new paypal.core.SandboxEnvironment(clientId, clientSecret)
+
   return new paypal.core.PayPalHttpClient(env)
 }
 
-/**
- * รับข้อมูลจากหน้าเช็คเอาท์ (หรือ Webhook) -> capture / verify -> ส่งอีเมล
- * คุณปรับ body/schema ตามของจริงได้เลย จุดสำคัญคือการส่ง metadata อยู่ใน dynamicTemplateData
- */
+type ExecuteBody = {
+  orderId?: string
+  payerEmail: string
+  clientId?: string | number
+  invoiceId?: string | number
+  serviceId?: string | number
+  amount?: string | number
+  currency?: string
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' })
 
+  const {
+    orderId,
+    payerEmail,
+    clientId: cid,
+    invoiceId,
+    serviceId,
+    amount,
+    currency = 'USD',
+  } = (req.body || {}) as ExecuteBody
+
+  if (!payerEmail) return res.status(400).json({ error: 'Missing payerEmail' })
+
   try {
-    const {
-      orderId,          // PayPal orderId หากคุณ capture ฝั่ง server
-      payerEmail,       // อีเมลผู้จ่าย
-      clientId: cid,    // ไอดีลูกค้าจากระบบคุณ/WHMCS
-      invoiceId,        // ไอดีอินวอยซ์จาก WHMCS (ถ้ามี)
-      serviceId,        // ไอดีบริการ
-      amount,           // จำนวนเงิน
-      currency = 'USD', // สกุลเงิน
-    } = req.body || {}
+    await logEvent({
+      level: 'info',
+      event: 'paypal.execute.started',
+      source: 'paypal',
+      payload: { orderId, payerEmail, clientId: cid, invoiceId, serviceId, amount, currency },
+    })
 
-    // --- (ตัวอย่าง) ตรวจค่าขั้นต่ำ ---
-    if (!payerEmail) return res.status(400).json({ error: 'Missing payerEmail' })
-
-    // --- (ตัวอย่าง) capture PayPal order ถ้าคุณต้องการทำที่นี่ ---
+    // 1) (ถ้าได้รับ orderId) ทำการ capture ที่ฝั่ง server
     if (orderId) {
       const client = getPayPalClient()
       const request = new paypal.orders.OrdersCaptureRequest(orderId)
       request.requestBody({})
+
       const response = await client.execute(request)
 
       await logEvent({
-        event: 'paypal.capture.completed',
         level: 'info',
-        payload: { orderId, status: response?.statusCode, result: response?.result },
+        event: 'paypal.execute.captured',
+        source: 'paypal',
+        payload: {
+          orderId,
+          statusCode: response?.statusCode,
+          resultStatus: (response?.result as any)?.status,
+        },
       })
 
-      if (response?.statusCode < 200 || response?.statusCode >= 300) {
-        return res.status(502).json({ error: 'PayPal capture failed', detail: response })
+      if (!response || response.statusCode < 200 || response.statusCode >= 300) {
+        await logEvent({
+          level: 'error',
+          event: 'paypal.execute.capture_failed',
+          source: 'paypal',
+          payload: { orderId, statusCode: response?.statusCode, result: response?.result },
+        })
+        return res.status(502).json({ error: 'PayPal capture failed' })
       }
     }
 
-    // --- (ถ้ามี flow สร้างลูกค้า/Invoice ใน WHMCS) ---
-    // const whmcs = await createWHMCSClientAndInvoice({ ... })
-    // const createdInvoiceId = whmcs?.invoiceId || invoiceId
+    // 2) (ตัวเลือก) หากต้องสร้างลูกค้า/อินวอยซ์ใน WHMCS ที่นี่
+    // const { clientId: newCid, invoiceId: newInvoiceId } = await createWHMCSClientAndInvoice({...})
 
-    // --- ส่งอีเมลยืนยัน: ใช้ Dynamic Template หรือ subject+html ก็ได้ ---
+    // 3) ส่งอีเมลยืนยัน/แจ้งเตือน
     await sendEmailWithSendGrid({
       to: payerEmail,
       templateId:
         process.env.SENDGRID_TEMPLATE_ID_ORDER_CONFIRM ||
-        process.env.SENDGRID_TEMPLATE_ID, // fallback ถ้าใช้ template ตัวเดียว
+        process.env.SENDGRID_TEMPLATE_ID,
+      // ใส่ข้อมูลที่ template ต้องใช้ใน dynamicTemplateData
       dynamicTemplateData: {
         clientId: cid,
         invoiceId,
         serviceId,
         amount,
         currency,
-        // เพิ่ม field อื่น ๆ ที่ template ใช้ได้ตามต้องการ
       },
-      // ถ้าไม่ใช้ template ให้ใช้แบบ subject/html:
+      // ถ้าไม่ได้ใช้ template และอยากส่งแบบ subject+html ให้ใช้ด้านล่างแทน:
       // subject: 'Payment received',
       // html: `<p>Thanks for your order.</p>
       //        <p>Client: ${cid} | Invoice: ${invoiceId} | Service: ${serviceId}</p>
@@ -83,8 +106,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })
 
     await logEvent({
-      event: 'email.order_confirm.sent',
       level: 'info',
+      event: 'email.order_confirm.sent',
+      source: 'sendgrid',
       payload: { to: payerEmail, clientId: cid, invoiceId, serviceId, amount, currency },
     })
 
@@ -95,9 +119,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })
   } catch (err: any) {
     await logEvent({
-      event: 'paypal.execute.error',
       level: 'error',
+      event: 'paypal.execute.error',
+      source: 'paypal',
       payload: { message: err?.message || String(err) },
+      meta: { stack: err?.stack },
     })
     return res.status(500).json({ error: err?.message || 'Unknown error' })
   }
