@@ -54,3 +54,14 @@ export async function getService(serviceId: string) {
   // WHMCS คืนเป็น array ถึงแม้มีแค่รายการเดียว
   return result.product
 }
+
+// lib/whmcs.ts (ส่วนท้ายไฟล์)
+export async function getClientDetails(clientId: string | number) {
+  return getClient(String(clientId))
+}
+export async function getInvoiceDetails(invoiceId: string | number) {
+  return getInvoice(String(invoiceId))
+}
+export async function getClientServices(serviceId: string | number) {
+  return getService(String(serviceId))
+}
