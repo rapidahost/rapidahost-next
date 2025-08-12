@@ -1,20 +1,23 @@
-// middleware.ts (ที่ root โปรเจกต์)
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+// middleware.ts — ป้องกัน /admin/* และ /api/admin/* ด้วย x-admin-key
+import type { NextRequest } from 'next/server'
+import { NextResponse } from 'next/server'
 
 export function middleware(req: NextRequest) {
-  const authHeader = req.headers.get('authorization') || '';
-  const token = authHeader.startsWith('Bearer ')
-    ? authHeader.slice('Bearer '.length).trim()
-    : '';
+  const { pathname } = req.nextUrl
+  const protect =
+    pathname.startsWith('/admin') ||
+    pathname.startsWith('/api/admin')
 
-  if (!token || token !== process.env.ADMIN_API_KEY) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!protect) return NextResponse.next()
+
+  const key = req.headers.get('x-admin-key') || req.nextUrl.searchParams.get('x-admin-key')
+  if (key && process.env.ADMIN_API_KEY && key === process.env.ADMIN_API_KEY) {
+    return NextResponse.next()
   }
-  return NextResponse.next();
+
+  return new NextResponse('Forbidden', { status: 403 })
 }
 
-// ป้องกันเฉพาะ /api/admin/*
 export const config = {
-  matcher: ['/api/admin/:path*'],
-};
+  matcher: ['/admin/:path*', '/api/admin/:path*'],
+}
