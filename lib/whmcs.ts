@@ -43,3 +43,35 @@ export async function whmcsValidatePromocode(promocode: string, pid?: number, bi
   if (billingcycle) p.billingcycle = billingcycle
   return callWhmcs(p)
 }
+
+// lib/whmcs.ts (เติมต่อจากฟังก์ชันเดิมๆ ของคุณ)
+
+// === Extra helpers used by email/reminder ===
+
+// ใบแจ้งหนี้
+export async function getInvoiceDetails(invoiceid: number | string) {
+  return callWhmcs({ action: 'GetInvoice', invoiceid: String(invoiceid) });
+}
+
+// ข้อมูลลูกค้า
+export async function getClientDetails(clientidOrEmail: { clientid?: number|string; email?: string }) {
+  const p: any = { action: 'GetClientsDetails' };
+  if (clientidOrEmail.clientid != null) p.clientid = String(clientidOrEmail.clientid);
+  if (clientidOrEmail.email) p.email = clientidOrEmail.email;
+  // stats: true จะดึงสรุปด้วย (optional)
+  p.stats = true;
+  return callWhmcs(p);
+}
+
+// บริการของลูกค้า
+export async function getClientServices(clientid: number | string, opts?: { limitnum?: number; limitstart?: number; productid?: number|string }) {
+  // WHMCS API: GetClientsProducts
+  const p: any = {
+    action: 'GetClientsProducts',
+    clientid: String(clientid),
+  };
+  if (opts?.limitnum != null) p.limitnum = String(opts.limitnum);
+  if (opts?.limitstart != null) p.limitstart = String(opts.limitstart);
+  if (opts?.productid != null) p.pid = String(opts.productid);
+  return callWhmcs(p);
+}
