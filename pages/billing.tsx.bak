@@ -1,0 +1,114 @@
+import { useEffect } from 'react';
+
+declare global {
+  interface Window {
+    paypal: any;
+  }
+}
+
+export default function BillingPage() {
+  useEffect(() => {
+    // โหลด PayPal SDK
+    const script = document.createElement('script');
+    script.src = `https://www.paypal.com/sdk/js?client-id=${process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID}&currency=USD`;
+    script.async = true;
+    script.onload = renderPayPalButtons;
+    document.body.appendChild(script);
+  }, []);
+
+  const renderPayPalButtons = () => {
+    if (!window.paypal) return;
+
+    window.paypal.Buttons({
+      style: {
+        layout: 'vertical',
+        color: 'gold',
+        shape: 'rect',
+        label: 'paypal'
+      },
+      createOrder: async () => {
+        const context = {
+          traceId: crypto.randomUUID(),
+          plan_id: 123, // TODO: ใส่ pid จริงจาก WHMCS
+          billing_cycle: 'monthly',
+          email: 'user@example.com',
+          firstname: 'John',
+          lastname: 'Doe',
+        };
+
+        const res = await fetch('/api/paypal/create-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount_cents: 9900,
+            currency_code: 'USD',
+            context
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to create PayPal order');
+        return data.id;
+      },
+      onApprove: async (data: any) => {
+        const res = await fetch('/api/paypal/capture-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: data.orderID })
+        });
+        const details = await res.json();
+        if (!res.ok) throw new Error(details.error || 'Capture failed');
+
+        window.location.href = '/thank-you';
+      },
+      onError: (err: any) => {
+        console.error('PayPal error', err);
+        alert('เกิดข้อผิดพลาดระหว่างการชำระเงิน');
+      }
+    }).render('#paypal-button-container');
+  };
+
+  const handleStripeCheckout = async () => {
+    const res = await fetch('/api/stripe/create-checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        plan_id: 123, // TODO: ใส่ pid จริงจาก WHMCS
+        billing_cycle: 'monthly',
+        email: 'user@example.com',
+        firstname: 'John',
+        lastname: 'Doe',
+      }),
+    });
+
+    const data = await res.json();
+    if (data.url) {
+      window.location.href = data.url;
+    } else {
+      alert('Stripe checkout error');
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto py-10 px-4">
+      <h1 className="text-2xl font-bold mb-6">Billing</h1>
+
+      {/* เลือกแผน (ตัวอย่าง fix ไว้) */}
+      <div className="border rounded p-4 mb-6">
+        <p className="font-semibold">WordPress Hosting – Plan Basic</p>
+        <p className="text-gray-600">฿99.00 / เดือน</p>
+      </div>
+
+      {/* ปุ่ม Stripe */}
+      <button
+        onClick={handleStripeCheckout}
+        className="bg-indigo-600 text-white px-6 py-3 rounded-lg w-full mb-4 hover:bg-indigo-700"
+      >
+        Pay with Stripe
+      </button>
+
+      {/* ปุ่ม PayPal */}
+      <div id="paypal-button-container"></div>
+    </div>
+  );
+}

@@ -1,67 +1,45 @@
 // lib/whmcs.ts
-import qs from 'qs'
+type WhmcsParams = Record<string, any>
+type WhmcsResponse<T = any> = { result: 'success' | 'error'; message?: string; [k: string]: any } & T
 
-const WHMCS_API_URL = process.env.WHMCS_API_URL! // เช่น https://billing.rapidahost.com/api/index.php
-const WHMCS_IDENTIFIER = process.env.WHMCS_API_IDENTIFIER!
-const WHMCS_SECRET = process.env.WHMCS_API_SECRET!
-const WHMCS_ADMIN_USER = process.env.WHMCS_API_ADMIN_USER!
+const WHMCS_API_URL = process.env.WHMCS_API_URL!
+const IDENTIFIER = process.env.WHMCS_API_IDENTIFIER!
+const SECRET = process.env.WHMCS_API_SECRET!
+const ACCESS_KEY = process.env.WHMCS_API_ACCESS_KEY || ''
 
-async function callWhmcsApi<T>(action: string, extraParams: Record<string, any>): Promise<T> {
-  const postData = qs.stringify({
-    identifier: WHMCS_IDENTIFIER,
-    secret: WHMCS_SECRET,
-    action,
-    adminuser: WHMCS_ADMIN_USER,
+async function callWhmcs<T = any>(params: WhmcsParams): Promise<WhmcsResponse<T>> {
+  const body = new URLSearchParams({
+    identifier: IDENTIFIER,
+    secret: SECRET,
+    ...(ACCESS_KEY ? { accesskey: ACCESS_KEY } : {}),
     responsetype: 'json',
-    ...extraParams,
+    ...Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)])),
   })
 
-  const response = await fetch(WHMCS_API_URL, {
+  const res = await fetch(WHMCS_API_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: postData,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+    cache: 'no-store',
   })
-
-  const result = await response.json()
-  if (result.result !== 'success') {
-    console.error(`[WHMCS] ${action} failed`, result)
-    throw new Error(result.message || 'WHMCS API call failed')
-  }
-
-  return result
+  return res.json()
 }
 
-// ✅ ดึงข้อมูล Client
-export async function getClient(clientId: string) {
-  const result = await callWhmcsApi<{ client: any }>('GetClientsDetails', { clientid: clientId })
-  return result.client
+/** ===== currencies ===== */
+export async function whmcsListCurrencies() {
+  return callWhmcs<{ currencies: { currency: Array<any> } }>({ action: 'GetCurrencies' })
 }
 
-// ✅ ดึงข้อมูล Invoice
-export async function getInvoice(invoiceId: string) {
-  const result = await callWhmcsApi<{ invoice: any }>('GetInvoice', { invoiceid: invoiceId })
-  return result.invoice
+/** ===== products & pricing ===== */
+export async function whmcsListProducts(params?: { groupid?: number; module?: boolean }) {
+  return callWhmcs({ action: 'GetProducts', ...(params?.groupid ? { gid: params.groupid } : {}), ...(params?.module ? { module: true } : {}) })
 }
-
-// ✅ ดึงข้อมูล Service
-export async function getService(serviceId: string) {
-  const result = await callWhmcsApi<{ product: any }>('GetClientsProducts', {
-    serviceid: serviceId,
-  })
-
-  // WHMCS คืนเป็น array ถึงแม้มีแค่รายการเดียว
-  return result.product
+export async function whmcsGetProductPricing(pid: number, currencyid?: number) {
+  return callWhmcs({ action: 'GetProductPricing', pid, currencyid: currencyid || 1 })
 }
-
-// lib/whmcs.ts (ส่วนท้ายไฟล์)
-export async function getClientDetails(clientId: string | number) {
-  return getClient(String(clientId))
-}
-export async function getInvoiceDetails(invoiceId: string | number) {
-  return getInvoice(String(invoiceId))
-}
-export async function getClientServices(serviceId: string | number) {
-  return getService(String(serviceId))
+export async function whmcsValidatePromocode(promocode: string, pid?: number, billingcycle?: string) {
+  const p: any = { action: 'ValidatePromocode', promocode }
+  if (pid) p.pid = pid
+  if (billingcycle) p.billingcycle = billingcycle
+  return callWhmcs(p)
 }

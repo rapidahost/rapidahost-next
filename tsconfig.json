@@ -1,5 +1,17 @@
 {
   "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "*"
+      ],
+      "@lib/*": [
+        "lib/*"
+      ],
+      "@api/*": [
+        "pages/api/*"
+      ]
+    },
     "target": "ES2017",
     "lib": [
       "dom",
@@ -17,19 +29,12 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
-    "strictNullChecks": true,
-
-    // ✅ เพิ่มตรงนี้
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./*"]
-    },
-
     "plugins": [
       {
         "name": "next"
       }
-    ]
+    ],
+    "strictNullChecks": true
   },
   "include": [
     "next-env.d.ts",

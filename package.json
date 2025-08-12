@@ -3,36 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build",
+    "dev": "next dev",
+    "build": "node scripts/prebuild.cjs && next build",
     "start": "next start",
-    "lint": "next lint"
+    "clean": "node scripts/clean.cjs",
+    "typecheck": "tsc --noEmit || true"
   },
   "dependencies": {
-    "@paypal/checkout-server-sdk": "^1.0.3",
-    "@sendgrid/mail": "^8.1.5",
     "@supabase/supabase-js": "^2.54.0",
-    "axios": "^1.11.0",
-    "body-parser": "^2.2.0",
-    "cors": "^2.8.5",
-    "dotenv": "^17.2.1",
-    "express": "^5.1.0",
-    "file-saver": "^2.0.5",
-    "firebase": "^12.0.0",
-    "jszip": "^3.10.1",
-    "micro": "^10.0.1",
     "next": "15.4.4",
-    "pdf-lib": "^1.17.1",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "stripe": "^18.3.0"
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4",
-    "@types/react": "^19.1.8",
-    "eslint": "^9",
-    "eslint-config-next": "15.4.4",
-    "tailwindcss": "^4"
+    "@types/react": "19.1.9",
+    "typescript": "5.9.2"
   }
 }
