@@ -1,0 +1,1 @@
+export { insertLog } from './logs' 
