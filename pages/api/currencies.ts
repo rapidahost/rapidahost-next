@@ -1,18 +1,25 @@
-// pages/api/currencies.ts
 import type { NextApiRequest, NextApiResponse } from 'next'
-import { whmcsListCurrencies } from '@/lib/whmcs'
+import { callWhmcs } from '@/lib/whmcs'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'GET') return res.status(405).end()
+  if (req.method !== 'GET') return res.status(405).json({ error:'Method not allowed' })
+  const traceId = `CURR_${Date.now()}_${Math.random().toString(36).slice(2,8)}`
   try {
-    const r = await whmcsListCurrencies()
-    if (r.result !== 'success') return res.status(400).json({ error: r.message || 'GetCurrencies failed' })
-    const currencies = (r.currencies?.currency || []).map((c: any) => ({
-      id: Number(c.id), code: String(c.code), prefix: c.prefix ?? '', suffix: c.suffix ?? '', rate: c.rate != null ? Number(c.rate) : 1,
-    }))
-    currencies.sort((a, b) => (a.code === 'USD' ? -1 : b.code === 'USD' ? 1 : a.code.localeCompare(b.code)))
-    res.status(200).json({ currencies })
-  } catch (e: any) {
-    res.status(500).json({ error: e.message || 'currencies error' })
+    const raw = await callWhmcs({ action: 'GetCurrencies' })
+    const currencies = raw?.currencies?.currency?.map((c:any)=>({
+      id: Number(c.id), code: String(c.code), prefix: c.prefix, suffix: c.suffix
+    })) ?? []
+    if (!currencies.length) {
+      console.error(`[${traceId}] currencies empty`, raw)
+      return res.status(502).json({ error:'No currencies from WHMCS', traceId })
+    }
+    return res.status(200).json({ traceId, currencies })
+  } catch (e:any) {
+    console.error(`[${traceId}] /api/currencies failed:`, e?.message || e)
+    return res.status(500).json({
+      error:'WHMCS currencies failed',
+      traceId,
+      hint:'Check WHMCS_API_URL / identifier / secret / Cloudflare'
+    })
   }
 }
