@@ -1,27 +1,32 @@
-// pages/api/currencies.ts — debug + ใช้ fetch (ไม่ต้อง axios)
+// pages/api/currencies.ts — debug version using fetch (no axios)
 import type { NextApiRequest, NextApiResponse } from 'next'
 
 type Currency = { id:number; code:string; prefix?:string; suffix?:string }
 
-function mask(s?: string) {
-  if (!s) return ''
-  if (s.length <= 6) return '*'.repeat(s.length)
-  return s.slice(0,3) + '***' + s.slice(-3)
+function mask(v?: string) {
+  if (!v) return ''
+  if (v.length <= 6) return '*'.repeat(v.length)
+  return v.slice(0,3) + '***' + v.slice(-3)
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'GET') return res.status(405).json({ ok:false, error:'Method not allowed' })
+  if (req.method !== 'GET') {
+    return res.status(405).json({ ok:false, error:'Method not allowed' })
+  }
 
   const traceId = `CURR_${Date.now()}_${Math.random().toString(36).slice(2,8)}`
   const isAdmin = (req.headers['x-admin-key'] || '') === (process.env.ADMIN_API_KEY || '')
 
-  // โหมด STUB: ใช้ทดสอบหน้า /billing ได้แม้ WHMCS ล่ม
+  // โหมด STUB: ให้หน้า /billing ใช้ทดสอบต่อได้ทันที
   if (req.query.stub === '1') {
     return res.status(200).json({
-      ok:true, traceId, stub:true,
+      ok:true,
+      traceId,
+      stub:true,
       currencies: [
-        { id:1, code:'USD', prefix:'$' },
-        { id:2, code:'THB', prefix:'฿' },
+        { id: 1, code: 'USD', prefix: '$' },
+        { id: 2, code: 'THB', prefix: '฿' },
+        { id: 3, code: 'EUR', prefix: '€' },
       ] as Currency[],
     })
   }
@@ -39,7 +44,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({
       ok:false, traceId,
       error:'Missing WHMCS envs (WHMCS_API_URL / IDENTIFIER / SECRET)',
-      hint:'ตั้งค่าใน Vercel แล้ว redeploy',
+      hint:'ตั้งค่าใน Vercel → Project → Settings → Environment Variables แล้ว redeploy',
     })
   }
 
@@ -68,13 +73,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ok:false, traceId, status: resp.status, contentType: ct,
         error:`WHMCS returned non-OK: ${resp.status}`,
         snippet: isAdmin ? text.slice(0,400) : undefined,
-        hint:'ตรวจ URL/credentials หรือโดน Cloudflare challenge',
+        hint:'ตรวจ URL/credentials หรือโดน Cloudflare/Login challenge ที่หน้า WHMCS',
       })
     }
     if (!ct.includes('application/json')) {
       return res.status(500).json({
         ok:false, traceId, status: resp.status, contentType: ct,
-        error:'WHMCS returned non-JSON (อาจเป็น HTML เช่นหน้า login/CF)',
+        error:'WHMCS returned non-JSON (อาจเป็น HTML)',
         snippet: isAdmin ? text.slice(0,400) : undefined,
         hint:'ใช้ endpoint API แท้ (เช่น /api/index.php) และยกเว้น challenge',
       })
@@ -84,13 +89,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try { json = JSON.parse(text) } catch {
       return res.status(500).json({ ok:false, traceId, error:'Invalid JSON from WHMCS' })
     }
+
     if (json?.result && json.result !== 'success') {
-      return res.status(502).json({ ok:false, traceId, error:`WHMCS result != success: ${json?.message || json?.result}` })
+      return res.status(502).json({
+        ok:false, traceId,
+        error:`WHMCS result != success: ${json?.message || json?.result}`
+      })
     }
 
     const list: Currency[] = json?.currencies?.currency?.map((c:any)=>({
-      id:Number(c.id), code:String(c.code), prefix:c.prefix, suffix:c.suffix
+      id: Number(c.id),
+      code: String(c.code),
+      prefix: c.prefix,
+      suffix: c.suffix
     })) ?? []
+
     if (!list.length) {
       console.error(`[${traceId}] currencies empty`, json)
       return res.status(502).json({ ok:false, traceId, error:'No currencies from WHMCS' })
