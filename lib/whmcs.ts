@@ -1,77 +1,73 @@
-// lib/whmcs.ts
-type WhmcsParams = Record<string, any>
-type WhmcsResponse<T = any> = { result: 'success' | 'error'; message?: string; [k: string]: any } & T
+// lib/whmcs.ts — ตัวกลางเรียก WHMCS แบบบังคับ JSON + error ชัดเจน
 
-const WHMCS_API_URL = process.env.WHMCS_API_URL!
-const IDENTIFIER = process.env.WHMCS_API_IDENTIFIER!
-const SECRET = process.env.WHMCS_API_SECRET!
-const ACCESS_KEY = process.env.WHMCS_API_ACCESS_KEY || ''
+export async function callWhmcs(params: Record<string, any>) {
+  if (!process.env.WHMCS_API_URL) throw new Error('WHMCS_API_URL missing')
 
-async function callWhmcs<T = any>(params: WhmcsParams): Promise<WhmcsResponse<T>> {
   const body = new URLSearchParams({
-    identifier: IDENTIFIER,
-    secret: SECRET,
-    ...(ACCESS_KEY ? { accesskey: ACCESS_KEY } : {}),
+    identifier: process.env.WHMCS_API_IDENTIFIER || '',
+    secret:     process.env.WHMCS_API_SECRET || '',
     responsetype: 'json',
     ...Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)])),
   })
 
-  const res = await fetch(WHMCS_API_URL, {
+  const resp = await fetch(process.env.WHMCS_API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body,
-    cache: 'no-store',
   })
-  return res.json()
+
+  const ct = resp.headers.get('content-type') || ''
+  const text = await resp.text()
+
+  if (!resp.ok) throw new Error(`WHMCS ${resp.status}: ${text.slice(0, 200)}`)
+  if (!ct.includes('application/json')) {
+    // มักเป็น HTML (เช่น Cloudflare Challenge / หน้า login / 404)
+    throw new Error(`WHMCS non-JSON: ${text.slice(0, 200)}`)
+  }
+
+  try {
+    const json = JSON.parse(text)
+    // WHMCS มาตรฐานมีฟิลด์ result=success/ error
+    if (json?.result && json.result !== 'success') {
+      throw new Error(`WHMCS error: ${json.message || json.result}`)
+    }
+    return json
+  } catch (e: any) {
+    throw new Error(`WHMCS invalid JSON: ${e.message}`)
+  }
 }
 
-/** ===== currencies ===== */
-export async function whmcsListCurrencies() {
-  return callWhmcs<{ currencies: { currency: Array<any> } }>({ action: 'GetCurrencies' })
+/* ===== helper APIs ที่หน้า billing ใช้ ===== */
+
+export async function getCurrencies() {
+  return callWhmcs({ action: 'GetCurrencies' })
 }
 
-/** ===== products & pricing ===== */
-export async function whmcsListProducts(params?: { groupid?: number; module?: boolean }) {
-  return callWhmcs({ action: 'GetProducts', ...(params?.groupid ? { gid: params.groupid } : {}), ...(params?.module ? { module: true } : {}) })
+export async function getProductsByCurrency(currency_id: number) {
+  return callWhmcs({ action: 'GetProducts', currencyid: currency_id })
 }
-export async function whmcsGetProductPricing(pid: number, currencyid?: number) {
-  return callWhmcs({ action: 'GetProductPricing', pid, currencyid: currencyid || 1 })
+
+export async function getProductPricing(pid: number, currency_id: number) {
+  return callWhmcs({ action: 'GetProducts', pid, currencyid: currency_id })
 }
-export async function whmcsValidatePromocode(promocode: string, pid?: number, billingcycle?: string) {
-  const p: any = { action: 'ValidatePromocode', promocode }
-  if (pid) p.pid = pid
-  if (billingcycle) p.billingcycle = billingcycle
+
+/* ===== ที่เคยเพิ่มก่อนหน้า (ตัวอย่าง) ===== */
+
+export async function getInvoiceDetails(invoiceid: number | string) {
+  return callWhmcs({ action: 'GetInvoice', invoiceid: String(invoiceid) })
+}
+
+export async function getClientDetails(clientidOrEmail: { clientid?: number|string; email?: string }) {
+  const p: any = { action: 'GetClientsDetails', stats: true }
+  if (clientidOrEmail.clientid != null) p.clientid = String(clientidOrEmail.clientid)
+  if (clientidOrEmail.email) p.email = clientidOrEmail.email
   return callWhmcs(p)
 }
 
-// lib/whmcs.ts (เติมต่อจากฟังก์ชันเดิมๆ ของคุณ)
-
-// === Extra helpers used by email/reminder ===
-
-// ใบแจ้งหนี้
-export async function getInvoiceDetails(invoiceid: number | string) {
-  return callWhmcs({ action: 'GetInvoice', invoiceid: String(invoiceid) });
-}
-
-// ข้อมูลลูกค้า
-export async function getClientDetails(clientidOrEmail: { clientid?: number|string; email?: string }) {
-  const p: any = { action: 'GetClientsDetails' };
-  if (clientidOrEmail.clientid != null) p.clientid = String(clientidOrEmail.clientid);
-  if (clientidOrEmail.email) p.email = clientidOrEmail.email;
-  // stats: true จะดึงสรุปด้วย (optional)
-  p.stats = true;
-  return callWhmcs(p);
-}
-
-// บริการของลูกค้า
 export async function getClientServices(clientid: number | string, opts?: { limitnum?: number; limitstart?: number; productid?: number|string }) {
-  // WHMCS API: GetClientsProducts
-  const p: any = {
-    action: 'GetClientsProducts',
-    clientid: String(clientid),
-  };
-  if (opts?.limitnum != null) p.limitnum = String(opts.limitnum);
-  if (opts?.limitstart != null) p.limitstart = String(opts.limitstart);
-  if (opts?.productid != null) p.pid = String(opts.productid);
-  return callWhmcs(p);
+  const p: any = { action: 'GetClientsProducts', clientid: String(clientid) }
+  if (opts?.limitnum != null) p.limitnum = String(opts.limitnum)
+  if (opts?.limitstart != null) p.limitstart = String(opts.limitstart)
+  if (opts?.productid != null) p.pid = String(opts.productid)
+  return callWhmcs(p)
 }
