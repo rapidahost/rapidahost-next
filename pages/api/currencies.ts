@@ -1,7 +1,8 @@
 // pages/api/currencies.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 
-export const config = { runtime: 'nodejs' as const };
+// ⛳️ FIX: ห้ามใช้ "as const" ที่ config.runtime
+export const config = { runtime: 'nodejs' };
 
 type WhmcsCurrency = {
   id: number;
@@ -11,6 +12,8 @@ type WhmcsCurrency = {
   rate: number;
   default?: boolean;
 };
+
+// …(โค้ดที่เหลือตามเวอร์ชันก่อนหน้าได้เลย ไม่ต้องเปลี่ยน)…
 
 type Ok = {
   ok: true;
