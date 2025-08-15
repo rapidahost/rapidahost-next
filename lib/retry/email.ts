@@ -21,12 +21,12 @@ export async function retryEmailNotification(input: RetryEmailInput) {
   }
 
   await logEvent({
-    level: 'info',
-    event: 'retry.email.requested',
-    source: 'retry',
-    payload: { ...payload, reason: input.reason ?? 'manual' },
-    meta: { traceId: input.traceId ?? null },
-  })
+  level: 'INFO',                              // 🔁 เดิม 'info'
+  event: 'retry.email.requested',
+  source: 'retry',
+  message: 'Retry email requested',           // (เสริม อ่านง่ายเวลาไล่ log)
+  data: { ...payload, reason: input.reason ?? 'manual' }, // 🔁 เดิม payload: ...
+});
 
   const res = await queueRetry({
     type: 'email',
