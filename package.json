@@ -1,23 +1,4 @@
-{
-  "name": "rapidahost-next",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "node scripts/prebuild.cjs && next build",
-    "start": "next start",
-    "clean": "node scripts/clean.cjs",
-    "typecheck": "tsc --noEmit || true"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.54.0",
-    "axios": "^1.11.0",
-    "next": "15.4.4",
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
-  },
-  "devDependencies": {
-    "@types/react": "19.1.9",
-    "typescript": "5.9.2"
-  }
+"scripts": {
+  "build": "next build",
+  "start": "next start"
 }

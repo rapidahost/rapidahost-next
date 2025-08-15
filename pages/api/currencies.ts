@@ -1,160 +1,234 @@
 // pages/api/currencies.ts
-import type { NextApiRequest, NextApiResponse } from 'next';
+import type { NextApiRequest, NextApiResponse } from "next";
 
-// ⛳️ FIX: ห้ามใช้ "as const" ที่ config.runtime
-export const config = { runtime: 'nodejs' };
-
-type WhmcsCurrency = {
-  id: number;
+type Currency = {
   code: string;
-  prefix: string;
-  suffix: string;
-  rate: number;
-  default?: boolean;
+  symbol: string;
+  name?: string;
+  rate?: number; // เทียบกับ USD (ตัวอย่าง)
 };
 
-// …(โค้ดที่เหลือตามเวอร์ชันก่อนหน้าได้เลย ไม่ต้องเปลี่ยน)…
-
-type Ok = {
+type ApiOk = {
   ok: true;
   traceId: string;
-  source: 'whmcs' | 'stub';
-  stub?: boolean;
-  currencies: WhmcsCurrency[];
+  source: "remote" | "stub";
+  currencies: Currency[];
+  diagnostics?: unknown;
 };
 
-type Err = {
+type ApiErr = {
   ok: false;
   traceId: string;
-  error: string;
-  detail?: string;
-  hint?: string;
+  error: {
+    message: string;
+    code?: string;
+  };
+  diagnostics?: unknown;
 };
 
-const STUB: WhmcsCurrency[] = [
-  { id: 1, code: 'USD', prefix: '$', suffix: '', rate: 1, default: true },
-  { id: 2, code: 'THB', prefix: '', suffix: '฿', rate: 36 },
+type ApiResp = ApiOk | ApiErr;
+
+/** ----- Utilities ----- */
+
+const STUB_CURRENCIES: Currency[] = [
+  { code: "USD", symbol: "$", name: "US Dollar", rate: 1 },
+  { code: "THB", symbol: "฿", name: "Thai Baht", rate: 36.5 },
+  { code: "EUR", symbol: "€", name: "Euro", rate: 0.91 },
 ];
 
-function traceId() {
-  return `RPD-${Date.now().toString(36).toUpperCase()}-${Math.random()
-    .toString(36)
-    .slice(-5)
-    .toUpperCase()}`;
+const safeBool = (v: unknown) => (v ? true : false);
+
+function mask(v?: string | null) {
+  if (!v) return false;
+  if (v.length <= 6) return "***";
+  return `${v.slice(0, 3)}***${v.slice(-2)}`;
 }
 
-function json<T>(res: NextApiResponse<T>, status: number, body: T) {
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
-  return res.status(status).json(body);
+function makeTraceId(req: NextApiRequest) {
+  const fromHeader =
+    (req.headers["x-request-id"] as string) ||
+    (req.headers["x-vercel-id"] as string);
+  if (fromHeader) return String(fromHeader);
+  // very light trace id
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function wantsStub(req: NextApiRequest) {
-  const q = (req.query.stub ?? '').toString().toLowerCase();
-  return q === '1' || q === 'true' || process.env.CURRENCIES_FALLBACK_STUB === '1';
+function pickHeaders(req: NextApiRequest) {
+  return {
+    "user-agent": req.headers["user-agent"] ?? "",
+    "x-forwarded-for": req.headers["x-forwarded-for"] ?? "",
+    "x-vercel-id": req.headers["x-vercel-id"] ?? "",
+  };
 }
 
-function mapCurrencies(raw: any): WhmcsCurrency[] {
-  const list = raw?.currencies?.currency ?? [];
-  if (!Array.isArray(list)) return [];
-  return list.map((c: any) => ({
-    id: Number(c.id),
-    code: String(c.code),
-    prefix: String(c.prefix ?? ''),
-    suffix: String(c.suffix ?? ''),
-    rate: Number(c.rate ?? 1),
-    default: String(c.default ?? '').toLowerCase() === 'on',
-  }));
+function envSnapshot() {
+  return {
+    // แสดงแค่ว่ามี/ไม่มี (ไม่โชว์ค่าเต็ม)
+    has_WHMCS_API_URL: safeBool(process.env.WHMCS_API_URL),
+    has_LOGTAIL_TOKEN: safeBool(process.env.LOGTAIL_TOKEN),
+    has_SENDGRID_API_KEY: safeBool(process.env.SENDGRID_API_KEY),
+    has_PAYPAL_CLIENT_SECRET: safeBool(process.env.PAYPAL_CLIENT_SECRET),
+    has_SUPABASE_URL: safeBool(process.env.SUPABASE_URL),
+    has_SUPABASE_SERVICE_ROLE_KEY: safeBool(process.env.SUPABASE_SERVICE_ROLE_KEY),
+    CURRENCIES_SOURCE_URL: process.env.CURRENCIES_SOURCE_URL
+      ? mask(process.env.CURRENCIES_SOURCE_URL)
+      : false,
+    CURRENCIES_FALLBACK_STUB: process.env.CURRENCIES_FALLBACK_STUB ?? undefined,
+  };
 }
 
-async function callWhmcs(action: string, params: Record<string, string>, signal: AbortSignal) {
-  const url = process.env.WHMCS_API_URL || '';
-  const identifier = process.env.WHMCS_API_IDENTIFIER || '';
-  const secret = process.env.WHMCS_API_SECRET || '';
-  if (!url || !identifier || !secret) {
-    throw new Error('Missing WHMCS_API_URL / WHMCS_API_IDENTIFIER / WHMCS_API_SECRET');
+function serializeError(err: unknown) {
+  if (err instanceof Error) {
+    return {
+      name: err.name,
+      message: err.message,
+      stack: err.stack?.split("\n").slice(0, 4).join("\n"),
+    };
   }
-  const body = new URLSearchParams({
-    action,
-    identifier,
-    secret,
-    responsetype: 'json',
-    ...params,
-  });
-
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: 'application/json,*/*',
-    },
-    body,
-    // @ts-expect-error: keepalive is fine in node runtime
-    keepalive: true,
-    signal,
-  });
-
-  const text = await r.text();
-  let data: any = undefined;
   try {
-    data = JSON.parse(text);
+    return { message: JSON.stringify(err) };
   } catch {
-    // keep data undefined
+    return { message: String(err) };
   }
-  if (!r.ok) throw new Error(`WHMCS HTTP ${r.status}: ${text.slice(0, 160)}`);
-  if (!data) throw new Error(`WHMCS returned non-JSON: ${text.slice(0, 160)}`);
-  return data;
 }
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse<Ok | Err>) {
-  const id = traceId();
-  res.setHeader('x-trace-id', id);
+/** ----- Remote fetcher (optional) -----
+ *  ตั้งค่า CURRENCIES_SOURCE_URL = URL ที่คืน JSON ของ currencies
+ *  รูปแบบที่คาดหวัง: { currencies: Currency[] }
+ */
+async function fetchCurrenciesFromRemote(
+  traceId: string
+): Promise<Currency[]> {
+  const url = process.env.CURRENCIES_SOURCE_URL;
 
-  // รองรับ HEAD/OPTIONS แบบเบา ๆ
-  if (req.method === 'OPTIONS') return res.status(204).end();
-  if (req.method !== 'GET') return res.status(405).setHeader('Allow', 'GET,OPTIONS').end();
+  if (!url) {
+    throw new Error("CURRENCIES_SOURCE_URL is not configured.");
+  }
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      "x-trace-id": traceId,
+      "content-type": "application/json",
+    },
+  });
+
+  // ไม่เชื่อใจ status 200 อย่างเดียว — บังคับ parse JSON
+  const text = await res.text();
+  let json: any;
+  try {
+    json = JSON.parse(text);
+  } catch (e) {
+    throw new Error(
+      `Remote did not return JSON (status ${res.status}): ${text.slice(0, 200)}`
+    );
+  }
+
+  if (!res.ok) {
+    throw new Error(
+      `Remote error ${res.status}: ${JSON.stringify(json).slice(0, 300)}`
+    );
+  }
+
+  if (!json || !Array.isArray(json.currencies)) {
+    throw new Error(
+      `Remote JSON shape invalid, expected { currencies: Currency[] }`
+    );
+  }
+
+  return json.currencies;
+}
+
+/** ----- Handler ----- */
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse<ApiResp>
+) {
+  const traceId = makeTraceId(req);
+  const debug = String(req.query.debug ?? "") === "1";
+  const wantStub =
+    String(req.query.stub ?? "") === "1" ||
+    String(process.env.CURRENCIES_FALLBACK_STUB ?? "") === "1";
+
+  // ให้แน่ใจว่าคืน JSON เสมอ
+  res.setHeader("content-type", "application/json; charset=utf-8");
+  // อย่าแคชตอน debug
+  res.setHeader(
+    "Cache-Control",
+    debug ? "no-store" : "public, max-age=60, s-maxage=60, stale-while-revalidate=300"
+  );
+
+  const commonDiag = {
+    traceId,
+    method: req.method,
+    url: req.url,
+    headers: pickHeaders(req),
+    env: envSnapshot(),
+    query: req.query,
+  };
+
+  if (req.method !== "GET") {
+    const payload: ApiErr = {
+      ok: false,
+      traceId,
+      error: { message: `Method ${req.method} not allowed`, code: "METHOD_NOT_ALLOWED" },
+      diagnostics: debug ? commonDiag : undefined,
+    };
+    // 405 แต่ยังคง JSON
+    res.status(405).json(payload);
+    return;
+  }
 
   try {
-    // โหมดสุขภาพ/สตับ
-    if (req.query.health === '1' || wantsStub(req)) {
-      return json(res, 200, { ok: true, traceId: id, source: 'stub', stub: true, currencies: STUB });
-    }
+    let source: "remote" | "stub" = "remote";
+    let currencies: Currency[];
 
-    // เรียก WHMCS (มี time-out)
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort('timeout'), 12000);
-
-    let currencies: WhmcsCurrency[] = [];
-    try {
-      const raw = await callWhmcs('GetCurrencies', {}, ac.signal);
-      currencies = mapCurrencies(raw);
-    } finally {
-      clearTimeout(timer);
-    }
-
-    if (!currencies.length) {
-      // กันตาย: ถ้า WHMCS ตอบว่าง และตั้งให้ใช้ stub ก็ส่ง stub
-      if (process.env.CURRENCIES_FALLBACK_STUB === '1') {
-        return json(res, 200, { ok: true, traceId: id, source: 'stub', stub: true, currencies: STUB });
+    if (wantStub) {
+      source = "stub";
+      currencies = STUB_CURRENCIES;
+    } else {
+      try {
+        currencies = await fetchCurrenciesFromRemote(traceId);
+      } catch (remoteErr) {
+        // log แล้ว fallback เป็น stub เพื่อให้หน้า billing ใช้งานต่อได้
+        console.error("[/api/currencies] remote fetch failed", {
+          traceId,
+          error: serializeError(remoteErr),
+          diag: commonDiag,
+        });
+        source = "stub";
+        currencies = STUB_CURRENCIES;
       }
-      return json(res, 500, {
-        ok: false,
-        traceId: id,
-        error: 'Empty currencies from WHMCS',
-        hint: 'Set CURRENCIES_FALLBACK_STUB=1 to force stub',
-      });
     }
 
-    return json(res, 200, { ok: true, traceId: id, source: 'whmcs', currencies });
-  } catch (e: any) {
-    console.error('[currencies]', id, e?.message || e);
-    // กันตายขั้นสุด: ยังส่ง JSON stub ให้หน้า /billing ใช้งานต่อ
-    return json(res, 200, {
+    const payload: ApiOk = {
       ok: true,
-      traceId: id,
-      source: 'stub',
-      stub: true,
-      currencies: STUB,
+      traceId,
+      source,
+      currencies,
+      diagnostics: debug ? commonDiag : undefined,
+    };
+    res.status(200).json(payload);
+  } catch (err) {
+    // กันทุกกรณีให้ได้ JSON เสมอ
+    const errorObj = serializeError(err);
+
+    // log แบบละเอียด (sanitized)
+    console.error("[/api/currencies] unhandled error", {
+      traceId,
+      error: errorObj,
+      diag: commonDiag,
     });
+
+    const payload: ApiErr = {
+      ok: false,
+      traceId,
+      error: { message: errorObj.message || "Internal Server Error" },
+      diagnostics: debug ? { ...commonDiag, error: errorObj } : undefined,
+    };
+
+    // เลือกตอบ 200 ก็ได้ถ้าอยากให้หน้า client ไม่ล้ม
+    // แต่ที่นี่จะคง 500 ไว้ (ยังคง JSON)
+    res.status(500).json(payload);
   }
 }
