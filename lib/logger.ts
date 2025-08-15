@@ -55,3 +55,6 @@ export const logInfo = (p: Omit<LogEvent, 'level'>) => insertLog({ ...p, level: 
 export const logWarn = (p: Omit<LogEvent, 'level'>) => insertLog({ ...p, level: 'WARN' });
 export const logError = (p: Omit<LogEvent, 'level'>) => insertLog({ ...p, level: 'ERROR' });
 export const logDebug = (p: Omit<LogEvent, 'level'>) => insertLog({ ...p, level: 'DEBUG' });
+
+export const logger = insertLog;
+
