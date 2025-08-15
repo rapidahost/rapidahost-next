@@ -1,11 +1,10 @@
-
 // pages/api/webhook/stripe.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import Stripe from 'stripe';
-import { ENV } from '../../../lib/env';            // ปรับ path ให้ถูกกับโปรเจกต์
+import { ENV } from '../../../lib/env';          // ปรับ path ถ้าโปรเจกต์อยู่ใต้ src/
 import { insertLog } from '../../../lib/logger';
 
-export const config = { api: { bodyParser: false } }; // สำคัญ
+export const config = { api: { bodyParser: false } }; // จำเป็นสำหรับ Stripe
 
 function buffer(req: NextApiRequest): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -27,7 +26,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const sig = req.headers['stripe-signature'] as string;
     event = stripe.webhooks.constructEvent(rawBody, sig, ENV.STRIPE_WEBHOOK_SECRET);
   } catch (err: any) {
-    await insertLog({ source:'stripe-webhook', event:'signature-verification-failed', status:'Failed', message: err?.message });
+    await insertLog({ source: 'stripe-webhook', event: 'signature-verification-failed', status: 'Failed', message: err?.message });
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
@@ -35,12 +34,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
       const traceId = session.client_reference_id || session.id;
-      await insertLog({ traceId, source:'stripe-webhook', event:'checkout.session.completed', message:'received', data:{ sessionId: session.id, metadata: session.metadata }});
-      // TODO: WHMCS → Email ตาม flow ของคุณ
+
+      await insertLog({
+        traceId,
+        source: 'stripe-webhook',
+        event: 'checkout.session.completed',
+        message: 'received',
+        data: { sessionId: session.id, metadata: session.metadata }
+      });
+
+      // TODO: ต่อ WHMCS → Activate → Send Email (ตามโค้ดเดิม)
     }
+
     return res.status(200).json({ received: true });
   } catch (err: any) {
-    await insertLog({ source:'stripe-webhook', event:'handler-error', status:'Failed', message: err?.message, data:{ type: (event as any)?.type, stack: err?.stack }});
+    await insertLog({ source: 'stripe-webhook', event: 'handler-error', status: 'Failed', message: err?.message, data: { type: (event as any)?.type, stack: err?.stack }});
     return res.status(500).json({ error: 'Webhook handling failed' });
   }
 }
