@@ -1,86 +1,57 @@
-// lib/logger.ts
-// Minimal logger that works on both server/client without extra deps.
-// - Console logs always
-// - Optionally POST ไปยัง /api/logs (ถ้ากำหนด NEXT_PUBLIC_BASE_URL + ADMIN_API_KEY)
-
-type Level = 'debug' | 'info' | 'warn' | 'error';
+// /lib/logger.ts
+export type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'DEBUG';
+export type LogStatus = 'Success' | 'Failed' | 'Pending';
 
 export type LogEvent = {
-  source: string;          // เช่น 'paypal:webhook' | 'api:currencies'
-  event: string;           // เช่น 'received' | 'error'
-  status?: 'ok' | 'fail' | string;
-  message?: string;
   traceId?: string;
-  metadata?: unknown;
-  level?: Level;
+  source: string;
+  event: string;
+  message?: string;
+  level?: LogLevel;
+  status?: LogStatus;
+  data?: any;
 };
 
-function nowISO() {
-  try {
-    return new Date().toISOString();
-  } catch {
-    return '' + Date.now();
-  }
+const isServer = typeof window === 'undefined';
+
+// ใช้ BASE เฉพาะฝั่ง client; ฝั่ง server ให้เรียก path ตรง ๆ
+function internalApiUrl(path: string) {
+  if (isServer) return path;
+  const base =
+    process.env.NEXT_PUBLIC_BASE_URL ||
+    (process as any).env?.LOCAL_API_BASE_URL ||
+    '';
+  return base ? `${base}${path}` : path;
 }
 
-async function postToInternalLogs(payload: LogEvent) {
-  const base = process.env.NEXT_PUBLIC_BASE_URL || process.env.LOCAL_API_BASE_URL;
-  const key = process.env.ADMIN_API_KEY;
+export async function insertLog(log: LogEvent | LogEvent[]) {
   const url = internalApiUrl('/api/logs/ingest');
-  if (!base || !key) return;
 
   try {
-    await fetch(`${base.replace(/\/+$/, '')}/api/logs`, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
-        'content-type': 'application/json',
-        'x-admin-key'  : key,
+        'Content-Type': 'application/json',
+        // ใส่ admin key เฉพาะฝั่ง server (env นี้ไม่ถูก expose ไป client)
+        ...(isServer && process.env.ADMIN_API_KEY
+          ? { 'x-admin-key': process.env.ADMIN_API_KEY as string }
+          : {}),
       },
-      body: JSON.stringify(payload),
-    }).catch(() => {});
-  } catch {
-    // เงียบไว้ ไม่ให้ throw ไปพัง endpoint หลัก
+      body: JSON.stringify(log),
+    });
+
+    if (!res.ok) {
+      const t = await res.text();
+      // ไม่ throw เพื่อไม่พัง flow หลัก
+      console.error('[insertLog] failed:', res.status, t);
+    }
+  } catch (e) {
+    console.error('[insertLog] exception:', e);
   }
 }
 
-function consoleLog(level: Level, payload: LogEvent) {
-  const line = {
-    ts: nowISO(),
-    level,
-    source: payload.source,
-    event: payload.event,
-    status: payload.status,
-    traceId: payload.traceId,
-    message: payload.message,
-    metadata: payload.metadata,
-  };
-
-  // อย่าพังบนเบราว์เซอร์เก่า
-  try {
-    // eslint-disable-next-line no-console
-    (console[level] ?? console.log)(`[${level}]`, line);
-  } catch {
-    // eslint-disable-next-line no-console
-    console.log(`[${level}]`, line);
-  }
-}
-
-async function emit(level: Level, payload: LogEvent) {
-  const withLevel = { ...payload, level };
-  consoleLog(level, withLevel);
-  // ส่งเข้า /api/logs แบบ best-effort เท่านั้น
-  await postToInternalLogs(withLevel);
-}
-
-export const logger = {
-  debug: (p: Omit<LogEvent, 'level'>) => emit('debug', p),
-  info : (p: Omit<LogEvent, 'level'>) => emit('info', p),
-  warn : (p: Omit<LogEvent, 'level'>) => emit('warn', p),
-  error: (p: Omit<LogEvent, 'level'>) => emit('error', p),
-};
-
-// เพื่อให้ imports เดิมที่ใช้ default ยังทำงานได้
-export default logger;
-
-// helper สั้น ๆ ให้โค้ดเก่าใช้ชื่อเดิมได้ (ถ้าคุณมีฟังก์ชัน logEvent ในโปรเจ็กต์)
-export const logEvent = (p: LogEvent) => logger.info(p);
+// helpers
+export const logInfo = (p: Omit<LogEvent, 'level'>) => insertLog({ ...p, level: 'INFO' });
+export const logWarn = (p: Omit<LogEvent, 'level'>) => insertLog({ ...p, level: 'WARN' });
+export const logError = (p: Omit<LogEvent, 'level'>) => insertLog({ ...p, level: 'ERROR' });
+export const logDebug = (p: Omit<LogEvent, 'level'>) => insertLog({ ...p, level: 'DEBUG' });
