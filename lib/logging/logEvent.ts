@@ -1,69 +1,50 @@
 // lib/logging/logEvent.ts
-export type LogLevel = 'info' | 'warn' | 'error' | 'debug'
-export type LogPayload = Record<string, any> | string | number | boolean | null
+import { logger } from '../logger';
+import { supabaseServer } from '@/lib/supabaseServer';
 
-export type LogEventInput = {
-  level?: LogLevel
-  event: string
-  source?: string
-  clientId?: string | number
-  userId?: string | number
-  ip?: string
-  payload?: LogPayload
-  meta?: Record<string, any>
+type LogRow = {
+  ts: string;
+  source: string;
+  event: string;
+  status?: string;
+  message?: string;
+  traceId?: string;
+  level?: 'debug' | 'info' | 'warn' | 'error';
+  metadata?: unknown;
+};
+
+function nowISO() {
+  try { return new Date().toISOString(); } catch { return '' + Date.now(); }
 }
 
-// มี export ฟังก์ชันจริง => ไฟล์นี้กลายเป็น “module”
-export async function logEvent(input: LogEventInput): Promise<void> {
-  const {
-    level = 'info',
-    event,
-    source = 'api',
-    clientId,
-    userId,
-    ip,
-    payload = null,
-    meta = {},
-  } = input
+export async function logEvent(row: Omit<LogRow, 'ts'>) {
+  const payload: LogRow = { ts: nowISO(), ...row };
 
-  const url = process.env.SUPABASE_URL
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_ANON_KEY
+  // 1) console (เสมอ)
+  const level = payload.level ?? 'info';
+  await (logger[level] ?? logger.info)({
+    source: payload.source,
+    event: payload.event,
+    status: payload.status,
+    traceId: payload.traceId,
+    message: payload.message,
+    metadata: payload.metadata
+  });
 
-  // ไม่มี ENV → fallback เป็น console (เพื่อไม่ให้ flow หลุด)
-  if (!url || !key) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('[logEvent:fallback]', {
-        level, event, source, clientId, userId, ip, payload, meta,
-      })
-    }
-    return
-  }
-
+  // 2) เข้าฐาน logs (best-effort)
   try {
-    const { createClient } = await import('@supabase/supabase-js')
-    const supabase = createClient(url, key, { auth: { persistSession: false } })
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) return; // ไม่มี env ก็ข้าม
 
-    const row = {
-      level,
-      event,
-      source,
-      client_id: clientId ? String(clientId) : null,
-      user_id: userId ? String(userId) : null,
-      ip: ip || null,
-      payload,
-      meta,
-    }
-
-    const { error } = await supabase.from('logs').insert(row)
+    const supabase = supabaseServer();
+    // สมมติคุณมีตาราง public.logs ที่คอลัมน์ตรงกับ LogRow (หรือปรับชื่อคอลัมน์ตามจริง)
+    const { error } = await supabase.from('logs').insert([payload]);
     if (error) {
-      // ไม่ throw เพื่อไม่พัง flow หลัก
-      console.warn('[logEvent] supabase insert error:', error)
+      // อย่าทำให้ endpoint พัง
+      console.warn('[logEvent] insert logs failed', { error });
     }
-  } catch (e: any) {
-    console.warn('[logEvent] unexpected error:', e?.message || e)
+  } catch (e) {
+    console.warn('[logEvent] skipped (no supabase available)', { e });
   }
 }
-
-// เผื่อมีที่ไหน import default
-export default logEvent
