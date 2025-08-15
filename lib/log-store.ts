@@ -1,5 +1,5 @@
 // /lib/log-store.ts
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseServer } from './supabaseServer';
 
 export type LogRow = {
   id: string;
