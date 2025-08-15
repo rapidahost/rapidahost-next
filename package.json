@@ -1,4 +1,14 @@
-"scripts": {
-  "build": "next build",
-  "start": "next start"
+{
+  "name": "rapidahost-next",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "15.4.4",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  }
 }
