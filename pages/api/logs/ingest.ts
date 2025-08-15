@@ -1,7 +1,7 @@
 // /pages/api/logs/ingest.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { supabaseServer } from '../../../lib/supabaseServer';
 import { ENV } from '../../../lib/env';
+import { supabaseServer } from '../../../lib/supabaseServer';
 
 type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'DEBUG';
 type LogStatus = 'Success' | 'Failed' | 'Pending';
@@ -43,3 +43,4 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   return res.status(200).json({ ok: true, count: rows.length });
 }
+
