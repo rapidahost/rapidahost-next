@@ -1,26 +1,35 @@
-// lib/email.ts
-import sgMail from '@sendgrid/mail'
-
-sgMail.setApiKey(process.env.SENDGRID_API_KEY!)
-
-export async function sendEmailWithSendGrid({
+// lib/email.ts — ใช้ REST ของ SendGrid แทน SDK
+export async function sendEmail({
   to,
-  templateId,
-  dynamicTemplateData,
+  subject,
+  html,
+  fromEmail = process.env.SENDGRID_FROM_EMAIL!,
+  fromName = process.env.SENDGRID_FROM_NAME || "Rapidahost",
 }: {
-  to: string
-  templateId: string
-  dynamicTemplateData: Record<string, any>
+  to: string;
+  subject: string;
+  html: string;
+  fromEmail?: string;
+  fromName?: string;
 }) {
-  const msg = {
-    to,
-    from: {
-      email: process.env.SENDGRID_FROM_EMAIL!,
-      name: process.env.SENDGRID_FROM_NAME!,
-    },
-    templateId,
-    dynamicTemplateData,
+  if (!process.env.SENDGRID_API_KEY) {
+    throw new Error("SENDGRID_API_KEY not set");
   }
+  const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.SENDGRID_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      personalizations: [{ to: [{ email: to }], subject }],
+      from: { email: fromEmail, name: fromName },
+      content: [{ type: "text/html", value: html }],
+    }),
+  });
 
-  await sgMail.send(msg)
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`SendGrid failed ${res.status}: ${text.slice(0, 300)}`);
+  }
 }
