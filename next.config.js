@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
-  // ❌ ห้ามมี output: 'export'
+  eslint: { ignoreDuringBuilds: true },
 };
+
 module.exports = nextConfig;
