@@ -1,1 +1,6 @@
-api/
+!pages/
+!pages/api/
+!pages/api/logs/
+!pages/api/logs/ingest.ts
+!pages/api/webhook/
+!pages/api/webhook/stripe.ts
