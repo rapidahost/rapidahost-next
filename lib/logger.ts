@@ -26,6 +26,7 @@ function nowISO() {
 async function postToInternalLogs(payload: LogEvent) {
   const base = process.env.NEXT_PUBLIC_BASE_URL || process.env.LOCAL_API_BASE_URL;
   const key = process.env.ADMIN_API_KEY;
+  const url = internalApiUrl('/api/logs/ingest');
   if (!base || !key) return;
 
   try {
