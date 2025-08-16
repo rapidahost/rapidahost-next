@@ -33,3 +33,4 @@ export async function sendEmail({
     throw new Error(`SendGrid failed ${res.status}: ${text.slice(0, 300)}`);
   }
 }
+

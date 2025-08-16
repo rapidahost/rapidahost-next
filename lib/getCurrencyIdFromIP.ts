@@ -15,3 +15,4 @@ export async function getCurrencyIdFromIP(ip: string) {
     return 1;
   }
 }
+

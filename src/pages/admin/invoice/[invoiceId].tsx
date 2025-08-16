@@ -117,3 +117,4 @@ async function sendReminder(invoiceId: string) {
     alert('Failed to send reminder');
   }
 }
+

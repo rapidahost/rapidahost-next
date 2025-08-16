@@ -12,3 +12,4 @@ export async function sendEmailPaid(clientId: number, invoiceId: number) { /* te
 export async function sendEmailWelcome(clientId: number, serviceId: number) { /* template: welcome */ }
 export async function sendEmailRefunded(clientId: number, invoiceId: number) { /* template: refund */ }
 export async function sendEmailFailed(clientId: number, invoiceId: number) { /* template: failed */ }
+

@@ -77,3 +77,4 @@ export async function getInvoiceDetails(invoiceId: number) {
   if (result.result !== 'success') throw new Error(result.message || 'WHMCS Error');
   return result;
 }
+

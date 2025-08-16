@@ -37,3 +37,4 @@ export async function insertFailedLog({
 
   return data?.[0]
 }
+

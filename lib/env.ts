@@ -15,3 +15,4 @@ if (!ENV.SUPABASE_URL || !ENV.SUPABASE_SERVICE_ROLE_KEY) {
   // แนะนำให้ log แค่ server
   console.warn('[env] Missing Supabase server envs');
 }
+

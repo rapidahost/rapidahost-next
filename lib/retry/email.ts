@@ -4,48 +4,48 @@ import { logEvent } from '@/lib/logging/logEvent'
 
 export type RetryEmailInput = {
   messageId: string
+  template: string
+  to: string
   reason?: string
   delaySeconds?: number
-  template?: string
-  to?: string
-  traceId?: string | null
+  traceId?: string
 }
 
-export async function retryEmailNotification(input: RetryEmailInput) {
-  if (!input.messageId) throw new Error('messageId is required')
-
+export async function retryEmail(input: RetryEmailInput) {
   const payload = {
     messageId: input.messageId,
-    template: input.template ?? null,
-    to: input.to ?? null,
+    template: input.template,
+    to: input.to,
   }
 
+  // log: requested
   await logEvent({
-  level: 'INFO',                              // 🔁 เดิม 'info'
-  event: 'retry.email.requested',
-  source: 'retry',
-  message: 'Retry email requested',           // (เสริม อ่านง่ายเวลาไล่ log)
-  data: { ...payload, reason: input.reason ?? 'manual' }, // 🔁 เดิม payload: ...
-});
-
-  // lib/retry/email.ts
-
-const res = await queueRetry({
-  step: 'send-email',                        // 👈 เพิ่มบรรทัดนี้ (required)
-  type: 'email',
-  reason: input.reason ?? 'manual',
-  delaySeconds: input.delaySeconds ?? 0,
-  payload,                                   // { messageId, template, to, ... }
-  traceId: input.traceId ?? undefined,
-});
-
-  await logEvent({
-    level: 'info',
-    event: 'retry.email.queued',
+    level: 'INFO', // <- ใช้ตัวใหญ่
+    event: 'retry.email.requested',
     source: 'retry',
-    payload: { id: res.id ?? null, queued: res.queued, ...payload },
-    meta: { traceId: input.traceId ?? null },
+    payload: { ...payload, reason: input.reason ?? 'manual' },
+    traceId: input.traceId,
   })
 
-  return res
+  // enqueue retry (อย่าใส่ traceId ถ้า QueueRetryInput ไม่รองรับ)
+  const res = await queueRetry({
+    type: 'email',
+    reason: input.reason ?? 'manual',
+    delaySeconds: input.delaySeconds ?? 0,
+    payload,
+    // โปรเจ็กต์นี้ต้องการ step ใน QueueRetryInput
+    step: 'send',
+  })
+
+  // log: queued
+  await logEvent({
+    level: 'INFO', // <- ใช้ตัวใหญ่
+    event: 'retry.email.queued',
+    source: 'retry',
+    payload: { id: res?.id ?? null, queued: res?.queued ?? true, ...payload },
+    traceId: input.traceId,
+  })
+
+  return { ok: true, id: res?.id ?? null }
 }
+

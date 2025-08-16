@@ -38,3 +38,4 @@ export async function getCurrencies() {
   const r = await callWHMCS('GetCurrencies', {});
   return r?.currencies?.currency ?? [];
 }
+

@@ -43,3 +43,4 @@ export async function insertLog({
   console.log('✅ Log inserted:', { event, status, traceId })
   return { success: true, traceId }
 }
+

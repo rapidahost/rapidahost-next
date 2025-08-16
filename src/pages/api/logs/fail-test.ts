@@ -21,3 +21,4 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // ✅ Redirect ไปยังหน้ารายละเอียด log
   res.redirect(302, `/admin/logs/${trace_id}`)
 }
+

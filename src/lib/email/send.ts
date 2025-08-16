@@ -9,3 +9,4 @@ export async function resendEmailByMessageId(messageId: string) {
     detail: `Resent email with messageId: ${messageId}`,
   };
 }
+

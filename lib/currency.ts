@@ -6,3 +6,4 @@ export function formatMoney(amount: number, currencyCode: string) {
     return `${currencyCode} ${amount.toFixed(2)}`
   }
 }
+

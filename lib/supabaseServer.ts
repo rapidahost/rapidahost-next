@@ -11,3 +11,4 @@ if (!url || !roleKey) {
 export const supabaseServer: SupabaseClient = createClient(url, roleKey, {
   auth: { persistSession: false },
 });
+

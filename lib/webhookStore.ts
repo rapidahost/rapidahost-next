@@ -16,3 +16,4 @@ export function extractMapping(resource: any): { clientId?: number; invoiceId?: 
   // 2) ตกลง default (หาเพิ่มจากระบบคุณ เช่น invoiceNo → invoiceId)
   return {};
 }
+

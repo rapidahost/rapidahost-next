@@ -13,3 +13,4 @@ export async function getLogByTraceId(traceId: string) {
   if (error) throw error
   return data
 }
+

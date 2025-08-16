@@ -17,7 +17,7 @@ export async function retryStripeFlow(input: RetryStripeInput) {
   }
 
   await logEvent({
-    level: 'info',
+    level: 'INFO',
     event: 'retry.stripe.requested',
     source: 'retry',
     payload: { ...payload, reason: input.reason ?? 'manual' },
@@ -33,7 +33,7 @@ export async function retryStripeFlow(input: RetryStripeInput) {
   })
 
   await logEvent({
-    level: 'info',
+    level: 'INFO',
     event: 'retry.stripe.queued',
     source: 'retry',
     payload: { id: res.id ?? null, queued: res.queued, ...payload },
@@ -42,3 +42,4 @@ export async function retryStripeFlow(input: RetryStripeInput) {
 
   return res
 }
+

@@ -36,3 +36,4 @@ export async function insertLog(log: LogType) {
 
   return { success: true, data }
 }
+

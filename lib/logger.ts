@@ -58,3 +58,4 @@ export const logDebug = (p: Omit<LogEvent, 'level'>) => insertLog({ ...p, level:
 
 export const logger = insertLog;
 
+

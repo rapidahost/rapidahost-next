@@ -6,3 +6,4 @@ export const Button = ({ children, className = '', ...props }: any) => (
     {children}
   </button>
 )
+

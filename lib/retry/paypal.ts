@@ -17,7 +17,7 @@ export async function retryPayPalFlow(input: RetryPayPalInput) {
   }
 
   await logEvent({
-    level: 'info',
+    level: 'INFO',
     event: 'retry.paypal.requested',
     source: 'retry',
     payload: { ...payload, reason: input.reason ?? 'manual' },
@@ -33,7 +33,7 @@ export async function retryPayPalFlow(input: RetryPayPalInput) {
   })
 
   await logEvent({
-    level: 'info',
+    level: 'INFO',
     event: 'retry.paypal.queued',
     source: 'retry',
     payload: { id: res.id ?? null, queued: res.queued, ...payload },
@@ -42,3 +42,4 @@ export async function retryPayPalFlow(input: RetryPayPalInput) {
 
   return res
 }
+

@@ -3,7 +3,7 @@ export type LogMeta = Record<string, any>;
 export type LogEventRow = { level?: 'info'|'warn'|'error'; event: string; meta?: LogMeta; traceId?: string };
 
 export async function logEvent(event: string, meta?: LogMeta) {
-  const row: LogEventRow = { level: 'info', event, meta };
+  const row: LogEventRow = { level: 'INFO', event, meta };
   try {
     // ถ้ามี API เก็บ log ภายในโปรเจกต์:
     const base = process.env.NEXT_PUBLIC_BASE_URL || '';
@@ -16,3 +16,4 @@ export async function logEvent(event: string, meta?: LogMeta) {
     console.warn('[logEvent] failed', e);
   }
 }
+

@@ -20,3 +20,4 @@ export function countryToCurrency(countryCode?: string | null): string {
   const cc = (countryCode || '').toUpperCase()
   return MAP[cc] || 'USD'
 }
+

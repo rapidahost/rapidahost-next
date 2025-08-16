@@ -81,3 +81,4 @@ export async function listLogs(params?: {
   }
   return { data: (data as LogRow[]) ?? [], count: count ?? 0 };
 }
+

@@ -37,3 +37,4 @@ export async function sendEmailWithSendGrid(
   });
   return { ok: resp.ok, status: resp.status, traceId, error: resp.ok ? undefined : await resp.text() };
 }
+
