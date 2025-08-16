@@ -1,12 +1,13 @@
-// /lib/supabaseServer.ts
-import { createClient } from '@supabase/supabase-js';
-import { ENV } from './env';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-export const supabaseServer = createClient(
-  ENV.SUPABASE_URL,
-  ENV.SUPABASE_SERVICE_ROLE_KEY,
-  {
-    auth: { persistSession: false },
-    global: { headers: { 'X-Client-Info': 'rapidahost-logger/1.0' } },
-  }
-);
+const url = process.env.SUPABASE_URL!;
+const roleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!; // ใช้เฉพาะฝั่ง Server
+
+if (!url || !roleKey) {
+  throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+}
+
+// สร้าง client ครั้งเดียวใช้ทั้งแอป
+export const supabaseServer: SupabaseClient = createClient(url, roleKey, {
+  auth: { persistSession: false },
+});

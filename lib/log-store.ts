@@ -40,7 +40,7 @@ export async function insertLog(row: Omit<LogRow, 'id' | 'created_at'>): Promise
 
 export async function getLogByTraceId(traceId: string): Promise<LogRow | null> {
   try {
-    const sb = supabaseServer();
+    const sb = supabaseServer;
     const { data, error } = await sb
       .from('logs')
       .select('*')
@@ -65,7 +65,7 @@ export async function listLogs(params?: {
   limit?: number;
   offset?: number;
 }) {
-  const sb = supabaseServer();
+  const sb = supabaseServer;
   let q = sb.from('logs').select('*', { count: 'exact' }).order('created_at', { ascending: false });
   if (params?.source) q = q.eq('source', params.source);
   if (params?.event) q = q.eq('event', params.event);
