@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: { ignoreDuringBuilds: true },
+  reactStrictMode: true,
+  swcMinify: true,
+  // ห้ามมี: output: 'export'
 };
-
 module.exports = nextConfig;

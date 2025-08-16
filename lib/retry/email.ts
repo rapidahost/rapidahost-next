@@ -28,13 +28,16 @@ export async function retryEmailNotification(input: RetryEmailInput) {
   data: { ...payload, reason: input.reason ?? 'manual' }, // 🔁 เดิม payload: ...
 });
 
-  const res = await queueRetry({
-    type: 'email',
-    reason: input.reason ?? 'manual',
-    delaySeconds: input.delaySeconds ?? 0,
-    payload,
-    traceId: input.traceId ?? undefined,
-  })
+  // lib/retry/email.ts
+
+const res = await queueRetry({
+  step: 'send-email',                        // 👈 เพิ่มบรรทัดนี้ (required)
+  type: 'email',
+  reason: input.reason ?? 'manual',
+  delaySeconds: input.delaySeconds ?? 0,
+  payload,                                   // { messageId, template, to, ... }
+  traceId: input.traceId ?? undefined,
+});
 
   await logEvent({
     level: 'info',
