@@ -15,7 +15,7 @@ export type LogRow = {
 
 export async function insertLog(row: Omit<LogRow, 'id' | 'created_at'>): Promise<LogRow | null> {
   try {
-    const sb = supabaseServer();
+    const sb = supabaseServer;
     const { data, error } = await sb
       .from('logs')
       .insert({
