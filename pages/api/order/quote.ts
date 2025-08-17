@@ -27,7 +27,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // คูปอง
     let coupon = { valid: false, type: '', amount: 0, description: '' as string }
     if (promocode) {
-      const val = await whmcsValidatePromocode(String(promocode), Number(pid), cycleKey)
+      const val = await whmcsValidatePromocode({
+  promocode: String(promocode),
+  pid: Number(pid),
+  billingcycle: cycleKey as any,       // ถ้ามี currency_id ก็ใส่เพิ่มได้
+  // currency: Number(currency_id) || 1,
+})
       if (val.result === 'success' && val.valid) {
         coupon.valid = true
         coupon.type = val.type || ''

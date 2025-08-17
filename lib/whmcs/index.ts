@@ -155,17 +155,37 @@ export async function whmcsValidatePromocode(opts: {
   pid?: number;
   billingcycle?: BillingCycle;
   currency?: number;
-}): Promise<{ result: string; valid?: boolean; data?: any; message?: string }> {
+}): Promise<{ result: string; valid?: boolean; type?: string; amount?: number; data?: any; message?: string }> {
   const data = await callWhmcs('ValidatePromocode', {
     promocode: opts.promocode,
     pid: opts.pid,
     billingcycle: opts.billingcycle,
     currency: opts.currency,
   });
+
+  // เดา field ชื่อที่พบบ่อยจาก WHMCS หลายเวอร์ชัน แล้ว map ให้เป็นมาตรฐาน
+  const type =
+    data?.type ??
+    data?.promotype ??
+    data?.promotion?.type;
+
+  const rawAmount =
+    data?.amount ??
+    data?.value ??
+    data?.promotion?.value;
+
+  const amount =
+    typeof rawAmount === 'string' ? parseFloat(rawAmount)
+    : typeof rawAmount === 'number' ? rawAmount
+    : undefined;
+
   return {
     result: data?.result ?? 'error',
     valid: data?.result === 'success',
+    type,
+    amount,
     data,
     message: data?.message,
   };
 }
+
