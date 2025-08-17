@@ -22,11 +22,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let clientId: number
     const existing = await whmcsGetClientByEmail(email)
     if (existing?.result === 'success' && existing?.clients?.client?.length) {
-      clientId = parseInt(existing.clients.client[0].id, 10)
+      clientId = Number(created.clientid)
     } else {
       const created = await whmcsCreateClient({ firstname, lastname, email })
       if (created?.result !== 'success') throw new Error(`WHMCS AddClient failed: ${created?.message || 'unknown'}`)
-      clientId = parseInt(created.clientid, 10)
+      clientId = typeof created.clientid === 'string'
+  ? parseInt(created.clientid, 10)
+  : Number(created.clientid);
+
     }
     await insertLog({ traceId, source: 'whmcs', step: 'whmcs_create_client', status: 'success', data: { clientId, email } } as any)
 
