@@ -34,6 +34,9 @@ export async function whmcsGetClientByEmail(email: string): Promise<{
 }
 
 /** สร้าง client ใหม่ (compat สำหรับ simulate.ts) */
+// ... import/const เดิมคงไว้ ...
+
+/** สร้าง client ใหม่ (compat สำหรับ simulate.ts) */
 export async function whmcsCreateClient(opts: {
   firstname: string;
   lastname: string;
@@ -41,7 +44,7 @@ export async function whmcsCreateClient(opts: {
   password2?: string;
   country?: string;
   currency?: number;
-}): Promise<{ result: string; clientid?: number }> {
+}): Promise<{ result: string; clientid?: number; message?: string }> { // ← เพิ่ม message
   const { data } = await axios.post(WHMCS_API_URL, null, {
     params: {
       action: 'AddClient',
@@ -50,7 +53,7 @@ export async function whmcsCreateClient(opts: {
       firstname: opts.firstname,
       lastname: opts.lastname,
       email: opts.email,
-      password2: opts.password2, // ถ้าไม่ส่ง WHMCS จะสุ่มให้เอง
+      password2: opts.password2,
       country: opts.country ?? 'TH',
       currency: opts.currency ?? 1,
       responsetype: 'json',
@@ -60,6 +63,7 @@ export async function whmcsCreateClient(opts: {
   return {
     result: data?.result ?? 'error',
     clientid: data?.clientid ? Number(data.clientid) : undefined,
+    message: data?.message, // ← ใส่เพิ่ม
   };
 }
 
@@ -72,7 +76,7 @@ export async function whmcsAddOrder(opts: {
   promocode?: string;
   notes?: string;
   noemail?: boolean;
-}): Promise<{ result: string; invoiceid?: number; productids?: number[] }> {
+}): Promise<{ result: string; invoiceid?: number; productids?: number[]; message?: string }> { // ← เพิ่ม message
   const { data } = await axios.post(WHMCS_API_URL, null, {
     params: {
       action: 'AddOrder',
@@ -93,10 +97,7 @@ export async function whmcsAddOrder(opts: {
   if (Array.isArray(data?.productids)) {
     productids = data.productids.map((x: any) => Number(x));
   } else if (typeof data?.productids === 'string') {
-    productids = String(data.productids)
-      .split(',')
-      .map((x) => Number(x.trim()))
-      .filter((n) => !Number.isNaN(n));
+    productids = String(data.productids).split(',').map((x) => Number(x.trim())).filter((n) => !Number.isNaN(n));
   } else if (typeof data?.productids === 'number') {
     productids = [Number(data.productids)];
   }
@@ -105,8 +106,6 @@ export async function whmcsAddOrder(opts: {
     result: data?.result ?? 'error',
     invoiceid: data?.invoiceid ? Number(data.invoiceid) : undefined,
     productids,
+    message: data?.message, // ← ใส่เพิ่ม
   };
 }
-
-// re-export ฟังก์ชันรวมที่คุณมีอยู่แล้ว
-export { createWHMCSClientAndInvoice } from './createWHMCSClientAndInvoice';
