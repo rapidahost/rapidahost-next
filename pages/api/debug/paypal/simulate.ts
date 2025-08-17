@@ -1,68 +1,58 @@
+// pages/api/debug/paypal/simulate.ts
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { insertLog } from '@/lib/logs'
-import { whmcsGetClientByEmail, whmcsCreateClient, whmcsAddOrder } from '@/lib/whmcs'
-import { sendEmailWithTemplate } from '@/lib/sendgrid'
+import { whmcsGetClientByEmail, whmcsCreateClient } from '@/lib/whmcs'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.headers['x-admin-key'] !== process.env.ADMIN_API_KEY) return res.status(403).json({ error: 'Forbidden' })
-  if (req.method !== 'POST') return res.status(405).end()
+  // simple auth สำหรับ debug endpoint
+  if (req.headers['x-admin-key'] !== process.env.ADMIN_API_KEY) {
+    return res.status(403).json({ error: 'Forbidden' })
+  }
 
-  const {
-    email = 'sandbox@example.com',
-    firstname = 'Test',
-    lastname = 'User',
-    plan_id = 1,
-    billing_cycle = 'monthly',
-    promocode = '',
-    traceId = `SIM_PAYPAL_${Date.now()}`
-  } = req.body || {}
+  const traceId = (req.query.traceId as string) ?? `debug-${Date.now()}`
+  const email = (req.body?.email as string) ?? 'debug@example.com'
+  const name = (req.body?.name as string) ?? 'Debug User'
+
+  const [firstname, ...rest] = name.split(' ')
+  const lastname = rest.join(' ') || 'User'
 
   try {
-    // 1) หา/สร้างลูกค้า
     let clientId: number
+
+    // ลองค้นหาจาก WHMCS ก่อน
     const existing = await whmcsGetClientByEmail(email)
-    if (existing?.result === 'success' && existing?.clients?.client?.length) {
-  // ดึง id แรกจาก clients
-  const first = (existing as any).clients.client[0] as { id: string | number }
-  clientId = typeof first.id === 'string' ? parseInt(first.id, 10) : Number(first.id)
-} else {
-  const created = await whmcsCreateClient({ firstname, lastname, email })
-  if (created?.result !== 'success') {
-    throw new Error(`WHMCS AddClient failed: ${created?.message || 'unknown'}`)
-  }
-  clientId = Number(created.clientid)
-}
-      clientId = typeof created.clientid === 'string'
-  ? parseInt(created.clientid, 10)
-  : Number(created.clientid);
-
+    if (existing?.result === 'success' && (existing as any).clients?.client?.length) {
+      const first = (existing as any).clients.client[0] as { id: string | number }
+      clientId = typeof first.id === 'string' ? parseInt(first.id, 10) : Number(first.id)
+    } else {
+      // ไม่พบ -> สร้าง client ใหม่
+      const created = await whmcsCreateClient({ firstname, lastname, email })
+      if (created?.result !== 'success') {
+        return res.status(500).json({
+          error: 'WHMCS AddClient failed',
+          detail: created,
+        })
+      }
+      clientId = Number((created as any).clientid)
     }
-    await insertLog({ traceId, source: 'whmcs', step: 'whmcs_create_client', status: 'success', data: { clientId, email } } as any)
 
-    // 2) สั่งซื้อ (จำลองว่าจ่ายแล้ว)
-    const order = await whmcsAddOrder({
-      clientid: clientId,
-      pid: plan_id,
-      billingcycle: billing_cycle,
-      paymentmethod: 'paypal',
-      promocode,
-      noinvoice: true,
-      noemail: false,
-    })
-    if (order?.result !== 'success') throw new Error(`WHMCS AddOrder failed: ${order?.message || 'unknown'}`)
-    await insertLog({ traceId, source: 'whmcs', step: 'whmcs_place_order', status: 'success', data: { orderId: order.orderid } } as any)
+    await insertLog({
+      traceId,
+      source: 'whmcs',
+      step: 'simulate_paypal',
+      status: 'success',
+      data: { clientId, email },
+    } as any)
 
-    // 3) ส่งอีเมล
-    await sendEmailWithTemplate({
-      to: email,
-      dynamicData: { firstname, lastname, plan_id, billing_cycle, order_id: order.orderid, gateway: 'PayPal (Simulated)' }
-    })
-    await insertLog({ traceId, source: 'email', step: 'email_sent', status: 'success' } as any)
-
-    return res.status(200).json({ ok: true, traceId, orderId: order.orderid })
-  } catch (e: any) {
-    await insertLog({ traceId, source: 'system', step: 'error', status: 'failed', message: e.message || 'simulate paypal error' } as any)
-    return res.status(500).json({ error: e.message || 'simulate error' })
+    return res.status(200).json({ ok: true, clientId })
+  } catch (err: any) {
+    await insertLog({
+      traceId,
+      source: 'simulate',
+      step: 'error',
+      status: 'failed',
+      data: { message: err?.message },
+    } as any)
+    return res.status(500).json({ ok: false, error: err?.message ?? 'unknown' })
   }
 }
-
