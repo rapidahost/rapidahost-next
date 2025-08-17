@@ -13,7 +13,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const products = (list.products?.product || []) as Array<any>
     const enriched = await Promise.all(products.map(async (p) => {
-      const pr = await whmcsGetProductPricing(Number(p.pid), currency_id)
+      const currencyNum = Number(currency_id) || 1
+const pr = await whmcsGetProductPricing({
+  pid: Number(p.pid),
+  currency: currencyNum,
+})
+
       const pricing = pr?.pricing || {}
       return {
         pid: Number(p.pid),
