@@ -117,3 +117,57 @@ export async function whmcsAddOrder(opts: {
 
 // ถ้ามีไฟล์นี้อยู่ ให้คง re-export นี้ไว้ด้วย
 export { createWHMCSClientAndInvoice } from './createWHMCSClientAndInvoice';
+
+// ----- เพิ่มด้านล่าง export/function เดิม ๆ -----
+
+type BillingCycle = 'monthly' | 'quarterly' | 'semiannually' | 'annually';
+
+/** ดึงรายการสินค้า (ใช้ในหน้าคำนวณราคา / ออเดอร์) */
+export async function whmcsListProducts(params?: {
+  gid?: number;   // product group id
+  module?: string;
+  pid?: number;   // product id (จะได้ 1 รายการ)
+}): Promise<{ result: string; products?: { product: any[] }; message?: string }> {
+  const data = await callWhmcs('GetProducts', params ?? {});
+  return {
+    result: data?.result ?? 'error',
+    products: data?.products,
+    message: data?.message,
+  };
+}
+
+/** ดึง pricing ของ product (คืนทั้ง block pricing ตรง ๆ เพื่อความเข้ากันได้กว้าง) */
+export async function whmcsGetProductPricing(opts: {
+  pid: number;
+  currency?: number;            // currency id (เช่น 1 = USD แล้วแต่ระบบ)
+  billingcycle?: BillingCycle;  // ถ้าต้องใช้ เลือก cycle ภายนอกจาก pricing ที่ส่งกลับ
+}): Promise<{ result: string; pricing?: any; message?: string }> {
+  const data = await callWhmcs('GetProducts', { pid: opts.pid, currency: opts.currency });
+  const product = data?.products?.product?.[0];
+  return {
+    result: data?.result ?? 'error',
+    pricing: product?.pricing,   // โยนทั้งก้อนให้ผู้เรียกตัดสินใจเลือก cycle/price เอง
+    message: data?.message,
+  };
+}
+
+/** ตรวจสอบโปรโมโค้ดกับสินค้า/รอบบิล */
+export async function whmcsValidatePromocode(opts: {
+  promocode: string;
+  pid?: number;
+  billingcycle?: BillingCycle;
+  currency?: number;
+}): Promise<{ result: string; valid?: boolean; data?: any; message?: string }> {
+  const data = await callWhmcs('ValidatePromocode', {
+    promocode: opts.promocode,
+    pid: opts.pid,
+    billingcycle: opts.billingcycle,
+    currency: opts.currency,
+  });
+  return {
+    result: data?.result ?? 'error',
+    valid: data?.result === 'success',
+    data,
+    message: data?.message,
+  };
+}
