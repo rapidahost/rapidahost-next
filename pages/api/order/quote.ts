@@ -36,7 +36,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (val.result === 'success' && val.valid) {
         coupon.valid = true
         coupon.type = val.type || ''
-        coupon.amount = val.amount ? parseFloat(val.amount) : 0
+        const amt =
+  typeof val.amount === 'number'
+    ? val.amount
+    : typeof val.amount === 'string'
+      ? parseFloat(val.amount)
+      : 0;
+coupon.amount = Number.isFinite(amt) ? amt : 0;
+
         coupon.description = val.description || String(promocode)
       } else {
         coupon.description = val.message || 'Invalid coupon'
