@@ -155,7 +155,15 @@ export async function whmcsValidatePromocode(opts: {
   pid?: number;
   billingcycle?: BillingCycle;
   currency?: number;
-}): Promise<{ result: string; valid?: boolean; type?: string; amount?: number; data?: any; message?: string }> {
+}): Promise<{
+  result: string;
+  valid?: boolean;
+  type?: string;
+  amount?: number;
+  description?: string;   // ✅ เพิ่ม field นี้
+  data?: any;
+  message?: string;
+}> {
   const data = await callWhmcs('ValidatePromocode', {
     promocode: opts.promocode,
     pid: opts.pid,
@@ -163,7 +171,7 @@ export async function whmcsValidatePromocode(opts: {
     currency: opts.currency,
   });
 
-  // เดา field ชื่อที่พบบ่อยจาก WHMCS หลายเวอร์ชัน แล้ว map ให้เป็นมาตรฐาน
+  // map ฟิลด์จากหลายเวอร์ชันของ WHMCS ให้เป็นมาตรฐานเดียว
   const type =
     data?.type ??
     data?.promotype ??
@@ -179,13 +187,21 @@ export async function whmcsValidatePromocode(opts: {
     : typeof rawAmount === 'number' ? rawAmount
     : undefined;
 
+  const description =
+    data?.description ??
+    data?.promodesc ??
+    data?.promo_description ??
+    data?.promotion?.description ??
+    data?.promotion?.name ??
+    undefined;
+
   return {
     result: data?.result ?? 'error',
     valid: data?.result === 'success',
     type,
     amount,
+    description,   // ✅ คืนไปให้ผู้เรียกใช้
     data,
     message: data?.message,
   };
 }
-
