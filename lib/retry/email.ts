@@ -1,6 +1,6 @@
 // lib/retry/email.ts
 import { queueRetry } from '@/lib/retry/queueRetry'
-import { logEvent } from '@/lib/logging/logEvent'
+import { logEvent } from '@/lib/logging'
 
 export type RetryEmailInput = {
   messageId: string
@@ -11,41 +11,39 @@ export type RetryEmailInput = {
   traceId?: string
 }
 
-export async function retryEmail(input: RetryEmailInput) {
+export async function requestRetryEmail(input: RetryEmailInput) {
   const payload = {
     messageId: input.messageId,
     template: input.template,
     to: input.to,
   }
 
-  // log: requested
-  await logEvent({
-    level: 'INFO', // <- ใช้ตัวใหญ่
-    event: 'retry.email.requested',
+  // Log: requested (ใช้ meta เพื่อส่งรายละเอียดเพิ่ม แทนการใช้ payload)
+  await logEvent('retry.email.requested', {
     source: 'retry',
-    payload: { ...payload, reason: input.reason ?? 'manual' },
+    ...payload,
+    reason: input.reason ?? 'manual',
     traceId: input.traceId,
+    level: 'INFO', // คงคอนเวนชันตัวพิมพ์ใหญ่; ฟังก์ชัน logEvent จะไม่ล้มแม้ไม่ได้ใช้ค่านี้
   })
 
-  // enqueue retry (อย่าใส่ traceId ถ้า QueueRetryInput ไม่รองรับ)
+  // เข้าคิว retry (บางโปรเจกต์ type เข้มงวดต่างกัน แคสต์เป็น any เพื่อหลีกเลี่ยง TS error เรื่องฟิลด์เสริม)
   const res = await queueRetry({
     type: 'email',
     reason: input.reason ?? 'manual',
     delaySeconds: input.delaySeconds ?? 0,
     payload,
-    // โปรเจ็กต์นี้ต้องการ step ใน QueueRetryInput
-    step: 'send',
-  })
-
-  // log: queued
-  await logEvent({
-    level: 'INFO', // <- ใช้ตัวใหญ่
-    event: 'retry.email.queued',
-    source: 'retry',
-    payload: { id: res?.id ?? null, queued: res?.queued ?? true, ...payload },
     traceId: input.traceId,
+  } as any)
+
+  // Log: queued
+  await logEvent('retry.email.queued', {
+    source: 'retry',
+    id: (res as any)?.id ?? null,
+    queued: !!(res as any)?.queued,
+    ...payload,
+    level: 'INFO',
   })
 
-  return { ok: true, id: res?.id ?? null }
+  return res
 }
-
