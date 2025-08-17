@@ -1,28 +1,27 @@
 // lib/whmcs/index.ts
+// lib/whmcs/index.ts
 import axios from 'axios';
 
 const WHMCS_API_URL = process.env.WHMCS_API_URL!;
 const WHMCS_IDENTIFIER = process.env.WHMCS_API_IDENTIFIER!;
 const WHMCS_SECRET = process.env.WHMCS_API_SECRET!;
 
-type BillingCycle = 'monthly' | 'quarterly' | 'semiannually' | 'annually';
-type PaymentMethod = 'stripe' | 'paypal';
-
-/** ใช้ email ค้นหา client; คืน shape ที่ไฟล์ debug/simulate คาดหวัง */
-export async function whmcsGetClientByEmail(email: string): Promise<{
-  result: string;
-  clients?: { client: Array<{ id: string }> };
-}> {
+/** Generic caller สำหรับ WHMCS API */
+export async function callWhmcs(
+  action: string,
+  params: Record<string, any> = {}
+) {
   const { data } = await axios.post(WHMCS_API_URL, null, {
     params: {
-      action: 'GetClientsDetails',
+      action,
       identifier: WHMCS_IDENTIFIER,
       secret: WHMCS_SECRET,
-      email,
-      stats: false,
       responsetype: 'json',
+      ...params,
     },
   });
+  return data; // คืนค่าตามรูปแบบของ WHMCS (result, message, ฯลฯ)
+}
 
   const result = data?.result ?? 'error';
   const clients =
