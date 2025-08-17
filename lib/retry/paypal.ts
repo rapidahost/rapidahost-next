@@ -1,45 +1,45 @@
 // lib/retry/paypal.ts
 import { queueRetry } from '@/lib/retry/queueRetry'
-import { logEvent } from '@/lib/logging/logEvent'
+import { logEvent } from '@/lib/logging'
 
-export type RetryPayPalInput = {
-  orderId?: string | null
-  captureId?: string | null
+export type RetryPaypalInput = {
   reason?: string
   delaySeconds?: number
-  traceId?: string | null
+  traceId?: string
+  // อนุญาตฟิลด์อื่น ๆ ของเพย์พาลตามที่มีอยู่จริง
+  [key: string]: any
 }
 
-export async function retryPayPalFlow(input: RetryPayPalInput) {
-  const payload = {
-    orderId: input.orderId ?? null,
-    captureId: input.captureId ?? null,
-  }
+export async function requestRetryPaypal(input: RetryPaypalInput) {
+  // ดึงฟิลด์ควบคุมออก แล้วที่เหลือถือเป็น payload ของงาน retry
+  const { reason, delaySeconds, traceId, ...payload } = (input || {}) as Record<string, any>
 
-  await logEvent({
-    level: 'INFO',
-    event: 'retry.paypal.requested',
+  // Log: requested — ย้ายข้อมูลเสริมไปไว้ใน meta
+  await logEvent('retry.paypal.requested', {
     source: 'retry',
-    payload: { ...payload, reason: input.reason ?? 'manual' },
-    meta: { traceId: input.traceId ?? null },
+    ...payload,
+    reason: reason ?? 'manual',
+    traceId,
+    level: 'INFO',
   })
 
+  // คิวงาน retry (แคสต์ any กัน type แตกต่างกันในโปรเจกต์)
   const res = await queueRetry({
     type: 'paypal',
-    reason: input.reason ?? 'manual',
-    delaySeconds: input.delaySeconds ?? 0,
+    reason: reason ?? 'manual',
+    delaySeconds: delaySeconds ?? 0,
     payload,
-    traceId: input.traceId ?? undefined,
-  })
+    traceId,
+  } as any)
 
-  await logEvent({
-    level: 'INFO',
-    event: 'retry.paypal.queued',
+  // Log: queued
+  await logEvent('retry.paypal.queued', {
     source: 'retry',
-    payload: { id: res.id ?? null, queued: res.queued, ...payload },
-    meta: { traceId: input.traceId ?? null },
+    id: (res as any)?.id ?? null,
+    queued: !!(res as any)?.queued,
+    ...payload,
+    level: 'INFO',
   })
 
   return res
 }
-
