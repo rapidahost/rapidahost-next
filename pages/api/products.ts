@@ -8,7 +8,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const currency_id = parseInt((req.query.currency_id as string) || '1', 10)
     const groupid = req.query.groupid ? parseInt(String(req.query.groupid), 10) : undefined
 
-    const list = await whmcsListProducts({ groupid })
+    const list = await whmcsListProducts({ gid: groupid })
     if (list.result !== 'success') return res.status(400).json({ error: list.message || 'GetProducts failed' })
 
     const products = (list.products?.product || []) as Array<any>
