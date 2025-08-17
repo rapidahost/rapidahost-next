@@ -120,8 +120,6 @@ export { createWHMCSClientAndInvoice } from './createWHMCSClientAndInvoice';
 
 // ----- เพิ่มด้านล่าง export/function เดิม ๆ -----
 
-type BillingCycle = 'monthly' | 'quarterly' | 'semiannually' | 'annually';
-
 /** ดึงรายการสินค้า (ใช้ในหน้าคำนวณราคา / ออเดอร์) */
 export async function whmcsListProducts(params?: {
   gid?: number;   // product group id
