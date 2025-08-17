@@ -14,7 +14,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const planName = product?.name || `Plan #${pid}`
 
     // ราคา base
-    const pricing = await whmcsGetProductPricing(Number(pid), Number(currency_id) || 1)
+    const pricing = await whmcsGetProductPricing({
+  pid: Number(pid),
+  currency: Number(currency_id) || 1,
+})
     if (pricing.result !== 'success') return res.status(400).json({ error: pricing.message || 'GetProductPricing failed' })
     const cycleKey = String(billing_cycle).toLowerCase()
     const baseStr = pricing.pricing?.[cycleKey]
