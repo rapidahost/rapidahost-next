@@ -22,10 +22,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let clientId: number
     const existing = await whmcsGetClientByEmail(email)
     if (existing?.result === 'success' && existing?.clients?.client?.length) {
-      clientId = Number(created.clientid)
-    } else {
-      const created = await whmcsCreateClient({ firstname, lastname, email })
-      if (created?.result !== 'success') throw new Error(`WHMCS AddClient failed: ${created?.message || 'unknown'}`)
+  // ดึง id แรกจาก clients
+  const first = (existing as any).clients.client[0] as { id: string | number }
+  clientId = typeof first.id === 'string' ? parseInt(first.id, 10) : Number(first.id)
+} else {
+  const created = await whmcsCreateClient({ firstname, lastname, email })
+  if (created?.result !== 'success') {
+    throw new Error(`WHMCS AddClient failed: ${created?.message || 'unknown'}`)
+  }
+  clientId = Number(created.clientid)
+}
       clientId = typeof created.clientid === 'string'
   ? parseInt(created.clientid, 10)
   : Number(created.clientid);
