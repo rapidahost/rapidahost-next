@@ -1,27 +1,36 @@
 // lib/whmcs/index.ts
-// lib/whmcs/index.ts
 import axios from 'axios';
 
 const WHMCS_API_URL = process.env.WHMCS_API_URL!;
 const WHMCS_IDENTIFIER = process.env.WHMCS_API_IDENTIFIER!;
 const WHMCS_SECRET = process.env.WHMCS_API_SECRET!;
 
-/** Generic caller สำหรับ WHMCS API */
-export async function callWhmcs(
-  action: string,
-  params: Record<string, any> = {}
-) {
+type BillingCycle = 'monthly' | 'quarterly' | 'semiannually' | 'annually';
+type PaymentMethod = 'stripe' | 'paypal';
+
+/** Generic caller สำหรับ WHMCS API (ใช้ใน /debug/whmcs/health.ts) */
+export async function callWhmcs(action: string, params: Record<string, any> = {}) {
+  const { data } = await axios.post(WHMCS_API_URL, null, {
+    params: { action, identifier: WHMCS_IDENTIFIER, secret: WHMCS_SECRET, responsetype: 'json', ...params },
+  });
+  return data;
+}
+
+/** ใช้ email ค้นหา client; คืน shape ที่ไฟล์ simulate คาดหวัง */
+export async function whmcsGetClientByEmail(email: string): Promise<{
+  result: string;
+  clients?: { client: Array<{ id: string }> };
+}> {
   const { data } = await axios.post(WHMCS_API_URL, null, {
     params: {
-      action,
+      action: 'GetClientsDetails',
       identifier: WHMCS_IDENTIFIER,
       secret: WHMCS_SECRET,
+      email,
+      stats: false,
       responsetype: 'json',
-      ...params,
     },
   });
-  return data; // คืนค่าตามรูปแบบของ WHMCS (result, message, ฯลฯ)
-}
 
   const result = data?.result ?? 'error';
   const clients =
@@ -33,9 +42,6 @@ export async function callWhmcs(
 }
 
 /** สร้าง client ใหม่ (compat สำหรับ simulate.ts) */
-// ... import/const เดิมคงไว้ ...
-
-/** สร้าง client ใหม่ (compat สำหรับ simulate.ts) */
 export async function whmcsCreateClient(opts: {
   firstname: string;
   lastname: string;
@@ -43,7 +49,7 @@ export async function whmcsCreateClient(opts: {
   password2?: string;
   country?: string;
   currency?: number;
-}): Promise<{ result: string; clientid?: number; message?: string }> { // ← เพิ่ม message
+}): Promise<{ result: string; clientid?: number; message?: string }> {
   const { data } = await axios.post(WHMCS_API_URL, null, {
     params: {
       action: 'AddClient',
@@ -62,7 +68,7 @@ export async function whmcsCreateClient(opts: {
   return {
     result: data?.result ?? 'error',
     clientid: data?.clientid ? Number(data.clientid) : undefined,
-    message: data?.message, // ← ใส่เพิ่ม
+    message: data?.message,
   };
 }
 
@@ -75,7 +81,7 @@ export async function whmcsAddOrder(opts: {
   promocode?: string;
   notes?: string;
   noemail?: boolean;
-}): Promise<{ result: string; invoiceid?: number; productids?: number[]; message?: string }> { // ← เพิ่ม message
+}): Promise<{ result: string; invoiceid?: number; productids?: number[]; message?: string }> {
   const { data } = await axios.post(WHMCS_API_URL, null, {
     params: {
       action: 'AddOrder',
@@ -105,6 +111,9 @@ export async function whmcsAddOrder(opts: {
     result: data?.result ?? 'error',
     invoiceid: data?.invoiceid ? Number(data.invoiceid) : undefined,
     productids,
-    message: data?.message, // ← ใส่เพิ่ม
+    message: data?.message,
   };
 }
+
+// ถ้ามีไฟล์นี้อยู่ ให้คง re-export นี้ไว้ด้วย
+export { createWHMCSClientAndInvoice } from './createWHMCSClientAndInvoice';
